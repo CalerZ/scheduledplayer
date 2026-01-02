@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">定时播放音乐</string>
+    
+    <!-- 通用 -->
+    <string name="ok">确定</string>
+    <string name="cancel">取消</string>
+    <string name="save">保存</string>
+    <string name="delete">删除</string>
+    <string name="edit">编辑</string>
+    <string name="close">关闭</string>
+    
+    <!-- 主界面 -->
+    <string name="no_tasks">暂无任务</string>
+    <string name="add_task">添加任务</string>
+    <string name="task_enabled">任务已启用</string>
+    <string name="task_disabled">任务已禁用</string>
+    
+    <!-- 任务相关 -->
+    <string name="task_name">任务名称</string>
+    <string name="task_time">播放时间</string>
+    <string name="start_time">开始时间</string>
+    <string name="end_time">结束时间</string>
+    <string name="task_audio">音频文件</string>
+    <string name="select_audio">选择音频</string>
+    
+    <!-- 播放模式 -->
+    <string name="play_mode">播放模式</string>
+    <string name="play_mode_sequence">顺序播放</string>
+    <string name="play_mode_random">随机播放</string>
+    <string name="play_mode_loop">循环播放</string>
+    
+    <!-- 通知 -->
+    <string name="notification_channel_name">播放服务</string>
+    <string name="notification_channel_description">显示音频播放状态</string>
+    <string name="notification_playing">正在播放: %s</string>
+    <string name="notification_stop">停止</string>
+    
+    <!-- 权限 -->
+    <string name="permission_storage_title">存储权限</string>
+    <string name="permission_storage_message">需要存储权限以访问音频文件</string>
+    <string name="permission_alarm_title">精确闹钟权限</string>
+    <string name="permission_alarm_message">需要精确闹钟权限以确保定时播放准确</string>
+    <string name="permission_notification_title">通知权限</string>
+    <string name="permission_notification_message">需要通知权限以显示播放状态</string>
+    
+    <!-- 华为适配 -->
+    <string name="huawei_permission_guide_title">权限设置</string>
+    <string name="huawei_autostart_guide">请开启自启动权限以确保定时任务正常执行</string>
+    <string name="huawei_battery_guide">请将应用加入电池优化白名单以确保后台播放稳定</string>
+    <string name="huawei_background_guide">请允许应用后台运行以确保播放不被中断</string>
+    <string name="go_to_settings">前往设置</string>
+    <string name="dont_show_again">不再提示</string>
+    
+    <!-- 任务日志 -->
+    <string name="task_log_title">执行日志</string>
+    <string name="view_logs">查看日志</string>
+    <string name="no_logs">暂无执行记录</string>
+    <string name="no_logs_hint">任务执行后将在此显示日志</string>
+    <string name="log_status">日志状态</string>
+    <string name="log_status_success">成功</string>
+    <string name="log_status_failed">失败</string>
+    <string name="log_status_in_progress">进行中</string>
+    <string name="log_played_files">播放了 %d 个音频文件</string>
+    <string name="log_no_files_played">未播放任何文件</string>
+    <string name="log_error_reason">失败原因：%s</string>
+    <string name="log_duration">执行时长: %s</string>
+</resources>

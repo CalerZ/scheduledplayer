@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Colors -->
+    <color name="primary">#1976D2</color>
+    <color name="primary_dark">#1565C0</color>
+    <color name="primary_light">#42A5F5</color>
+    <color name="primary_container">#BBDEFB</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="on_primary_container">#0D47A1</color>
+    
+    <!-- Secondary Colors -->
+    <color name="secondary">#FF5722</color>
+    <color name="secondary_dark">#E64A19</color>
+    <color name="secondary_light">#FF8A65</color>
+    <color name="secondary_container">#FFCCBC</color>
+    <color name="on_secondary">#FFFFFF</color>
+    <color name="on_secondary_container">#BF360C</color>
+    
+    <!-- Background Colors -->
+    <color name="background">#FAFAFA</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_variant">#F5F5F5</color>
+    <color name="on_background">#212121</color>
+    <color name="on_surface">#212121</color>
+    <color name="on_surface_variant">#757575</color>
+    
+    <!-- Status Colors -->
+    <color name="error">#D32F2F</color>
+    <color name="on_error">#FFFFFF</color>
+    <color name="success">#388E3C</color>
+    <color name="warning">#FFA000</color>
+    
+    <!-- Task Status Colors -->
+    <color name="task_enabled">#4CAF50</color>
+    <color name="task_disabled">#9E9E9E</color>
+    <color name="task_playing">#2196F3</color>
+    
+    <!-- Log Status Colors -->
+    <color name="log_success">#4CAF50</color>
+    <color name="log_failed">#F44336</color>
+    <color name="log_in_progress">#2196F3</color>
+    <color name="white">#FFFFFF</color>
+    
+    <!-- Divider -->
+    <color name="divider">#E0E0E0</color>
+    
+    <!-- Outline -->
+    <color name="outline">#BDBDBD</color>
+    <color name="outline_variant">#E0E0E0</color>
+</resources>

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="@dimen/spacing_md"
+    android:layout_marginTop="@dimen/spacing_sm"
+    app:cardCornerRadius="@dimen/card_corner_radius"
+    app:cardElevation="@dimen/card_elevation">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="@dimen/task_item_padding">
+
+        <!-- 任务状态指示器 -->
+        <View
+            android:id="@+id/viewStatus"
+            android:layout_width="4dp"
+            android:layout_height="0dp"
+            android:background="@color/task_enabled"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- 任务名称 -->
+        <TextView
+            android:id="@+id/textTaskName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_md"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/on_surface"
+            android:textSize="@dimen/text_size_lg"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@id/switchEnabled"
+            app:layout_constraintStart_toEndOf="@id/viewStatus"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="早起闹钟" />
+
+        <!-- 播放时间 -->
+        <TextView
+            android:id="@+id/textTaskTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_md"
+            android:layout_marginTop="@dimen/spacing_xs"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="@dimen/text_size_sm"
+            app:layout_constraintStart_toEndOf="@id/viewStatus"
+            app:layout_constraintTop_toBottomOf="@id/textTaskName"
+            tools:text="07:00 - 30分钟" />
+
+        <!-- 播放模式 -->
+        <TextView
+            android:id="@+id/textPlayMode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_md"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="@dimen/text_size_sm"
+            app:layout_constraintStart_toEndOf="@id/textTaskTime"
+            app:layout_constraintTop_toBottomOf="@id/textTaskName"
+            tools:text="· 顺序播放" />
+
+        <!-- 重复日期 -->
+        <TextView
+            android:id="@+id/textRepeatDays"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_md"
+            android:layout_marginTop="@dimen/spacing_xs"
+            android:textColor="@color/primary"
+            android:textSize="@dimen/text_size_xs"
+            app:layout_constraintEnd_toStartOf="@id/switchEnabled"
+            app:layout_constraintStart_toEndOf="@id/viewStatus"
+            app:layout_constraintTop_toBottomOf="@id/textTaskTime"
+            tools:text="周一 周二 周三 周四 周五" />
+
+        <!-- 启用开关 -->
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switchEnabled"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>

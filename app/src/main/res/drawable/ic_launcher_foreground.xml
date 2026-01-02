@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 音量图标 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,34L54,74L42,62L30,62L30,46L42,46L54,34ZM66,40.5L66,67.5C72.6,64.8 77,58.1 77,50.5C77,42.9 72.6,36.2 66,33.5L66,40.5ZM66,22.5L66,29.7C78.5,33.3 87,44.8 87,58.5C87,72.2 78.5,83.7 66,87.3L66,94.5C82.5,90.6 95,75.9 95,58.5C95,41.1 82.5,26.4 66,22.5Z"/>
+</vector>

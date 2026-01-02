@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="@dimen/spacing_md"
+    android:layout_marginTop="@dimen/spacing_sm"
+    app:cardCornerRadius="@dimen/card_corner_radius"
+    app:cardElevation="@dimen/card_elevation">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <!-- 任务状态指示器 -->
+        <View
+            android:id="@+id/viewStatus"
+            android:layout_width="4dp"
+            android:layout_height="match_parent"
+            android:background="@color/task_enabled" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- 任务信息区域 -->
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="@dimen/spacing_md"
+                android:paddingEnd="@dimen/spacing_md"
+                android:paddingTop="@dimen/task_item_padding"
+                android:paddingBottom="@dimen/task_item_padding">
+
+                <!-- 任务名称 -->
+                <TextView
+                    android:id="@+id/textTaskName"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/on_surface"
+                    android:textSize="@dimen/text_size_lg"
+                    android:textStyle="bold"
+                    app:layout_constraintEnd_toStartOf="@id/switchEnabled"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    tools:text="早起闹钟" />
+
+                <!-- 播放时间 -->
+                <TextView
+                    android:id="@+id/textTaskTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_xs"
+                    android:textColor="@color/on_surface_variant"
+                    android:textSize="@dimen/text_size_sm"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/textTaskName"
+                    tools:text="07:00 - 30分钟" />
+
+                <!-- 播放模式 -->
+                <TextView
+                    android:id="@+id/textPlayMode"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/spacing_sm"
+                    android:textColor="@color/on_surface_variant"
+                    android:textSize="@dimen/text_size_sm"
+                    app:layout_constraintStart_toEndOf="@id/textTaskTime"
+                    app:layout_constraintTop_toBottomOf="@id/textTaskName"
+                    tools:text="· 顺序播放" />
+
+                <!-- 重复日期 -->
+                <TextView
+                    android:id="@+id/textRepeatDays"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_xs"
+                    android:textColor="@color/primary"
+                    android:textSize="@dimen/text_size_xs"
+                    app:layout_constraintEnd_toStartOf="@id/switchEnabled"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/textTaskTime"
+                    tools:text="周一 周二 周三 周四 周五" />
+
+                <!-- 启用开关 -->
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchEnabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <!-- 播放信息区域 -->
+            <LinearLayout
+                android:id="@+id/layoutPlayback"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                android:background="@color/surface_variant"
+                android:paddingHorizontal="@dimen/spacing_md"
+                android:paddingVertical="@dimen/spacing_sm">
+
+                <!-- 进度条 -->
+                <ProgressBar
+                    android:id="@+id/progressBar"
+                    style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:max="100"
+                    android:progress="0"
+                    android:progressTint="@color/primary"
+                    android:progressBackgroundTint="@color/on_surface_variant" />
+
+                <!-- 歌曲信息和控制按钮 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="@dimen/spacing_sm">
+
+                    <!-- 歌曲名和时间 -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/textSongName"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textColor="@color/on_surface"
+                            android:textSize="@dimen/text_size_sm"
+                            tools:text="歌曲名称.mp3" />
+
+                        <TextView
+                            android:id="@+id/textPlayTime"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/on_surface_variant"
+                            android:textSize="@dimen/text_size_xs"
+                            tools:text="01:23 / 04:56" />
+
+                    </LinearLayout>
+
+                    <!-- 播放/暂停按钮 -->
+                    <ImageButton
+                        android:id="@+id/buttonPlayPause"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/bg_circle_primary"
+                        android:src="@drawable/ic_pause"
+                        android:scaleType="centerInside"
+                        android:padding="8dp"
+                        android:contentDescription="@string/pause"
+                        app:tint="@color/on_primary" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

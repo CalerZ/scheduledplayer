@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="56dp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="@dimen/spacing_md"
+    android:background="?attr/selectableItemBackground">
+
+    <!-- 拖拽手柄 -->
+    <ImageView
+        android:id="@+id/dragHandle"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:src="@drawable/ic_drag_handle"
+        android:contentDescription="拖拽排序"
+        app:tint="@color/on_surface_variant" />
+
+    <!-- 序号 -->
+    <TextView
+        android:id="@+id/textIndex"
+        android:layout_width="32dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/spacing_sm"
+        android:gravity="center"
+        android:textColor="@color/on_surface_variant"
+        android:textSize="@dimen/text_size_sm"
+        tools:text="01" />
+
+    <!-- 歌曲信息区域 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="@dimen/spacing_sm"
+        android:orientation="vertical">
+
+        <!-- 歌曲名 -->
+        <TextView
+            android:id="@+id/textFileName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/on_surface"
+            android:textSize="@dimen/text_size_sm"
+            tools:text="歌曲名称.mp3" />
+
+    </LinearLayout>
+
+    <!-- 时长 -->
+    <TextView
+        android:id="@+id/textDuration"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/spacing_sm"
+        android:textColor="@color/on_surface_variant"
+        android:textSize="@dimen/text_size_xs"
+        tools:text="03:45" />
+
+    <!-- 删除按钮 -->
+    <ImageButton
+        android:id="@+id/buttonRemove"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="@dimen/spacing_xs"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="删除"
+        android:src="@drawable/ic_delete"
+        app:tint="@color/error" />
+
+</LinearLayout>

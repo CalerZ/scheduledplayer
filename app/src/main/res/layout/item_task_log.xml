@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="@dimen/spacing_md"
+    android:layout_marginTop="@dimen/spacing_sm"
+    app:cardCornerRadius="@dimen/card_corner_radius"
+    app:cardElevation="@dimen/card_elevation">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="@dimen/task_item_padding">
+
+        <!-- 状态指示器 -->
+        <View
+            android:id="@+id/viewStatus"
+            android:layout_width="4dp"
+            android:layout_height="0dp"
+            android:background="@color/log_success"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- 状态图标 -->
+        <ImageView
+            android:id="@+id/imageStatus"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_marginStart="@dimen/spacing_md"
+            android:src="@android:drawable/ic_media_play"
+            android:contentDescription="@string/log_status"
+            app:layout_constraintStart_toEndOf="@id/viewStatus"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="@color/log_success" />
+
+        <!-- 执行时间 -->
+        <TextView
+            android:id="@+id/textTime"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_sm"
+            android:textColor="@color/on_surface"
+            android:textSize="@dimen/text_size_md"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@id/textStatus"
+            app:layout_constraintStart_toEndOf="@id/imageStatus"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="2024-12-24 08:00:00 - 09:00:00" />
+
+        <!-- 状态标签 -->
+        <TextView
+            android:id="@+id/textStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_status_tag"
+            android:paddingHorizontal="@dimen/spacing_sm"
+            android:paddingVertical="2dp"
+            android:textColor="@color/white"
+            android:textSize="@dimen/text_size_xs"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="成功" />
+
+        <!-- 播放信息 -->
+        <TextView
+            android:id="@+id/textPlayInfo"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_sm"
+            android:layout_marginTop="@dimen/spacing_xs"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="@dimen/text_size_sm"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/imageStatus"
+            app:layout_constraintTop_toBottomOf="@id/textTime"
+            tools:text="播放了 5 个音频文件" />
+
+        <!-- 错误信息（仅失败时显示） -->
+        <TextView
+            android:id="@+id/textError"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_sm"
+            android:layout_marginTop="@dimen/spacing_xs"
+            android:textColor="@color/log_failed"
+            android:textSize="@dimen/text_size_sm"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/imageStatus"
+            app:layout_constraintTop_toBottomOf="@id/textPlayInfo"
+            tools:text="失败原因：文件缺失 - test.mp3 不存在"
+            tools:visibility="visible" />
+
+        <!-- 执行时长 -->
+        <TextView
+            android:id="@+id/textDuration"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_sm"
+            android:layout_marginTop="@dimen/spacing_xs"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="@dimen/text_size_xs"
+            app:layout_constraintStart_toEndOf="@id/imageStatus"
+            app:layout_constraintTop_toBottomOf="@id/textError"
+            tools:text="执行时长: 1小时0分钟" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>
