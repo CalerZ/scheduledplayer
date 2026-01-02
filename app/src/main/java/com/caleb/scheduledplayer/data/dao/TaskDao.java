@@ -85,6 +85,12 @@ public interface TaskDao {
     void updateEnabled(long taskId, boolean enabled, long updatedAt);
 
     /**
+     * 更新随机暂停配置
+     */
+    @Query("UPDATE tasks SET random_pause_enabled = :enabled, min_pause_minutes = :minMinutes, max_pause_minutes = :maxMinutes, updated_at = :updatedAt WHERE id = :taskId")
+    void updateRandomPauseConfig(long taskId, boolean enabled, int minMinutes, int maxMinutes, long updatedAt);
+
+    /**
      * 获取任务数量
      */
     @Query("SELECT COUNT(*) FROM tasks")

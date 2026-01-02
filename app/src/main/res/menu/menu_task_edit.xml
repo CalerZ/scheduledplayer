@@ -3,12 +3,6 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/action_save"
-        android:icon="@android:drawable/ic_menu_save"
-        android:title="@string/save"
-        app:showAsAction="always" />
-
-    <item
         android:id="@+id/action_view_logs"
         android:icon="@android:drawable/ic_menu_recent_history"
         android:title="@string/view_logs"

@@ -126,6 +126,23 @@ public class TaskEditViewModel extends AndroidViewModel {
             }
         });
     }
+    
+    /**
+     * 更新随机暂停配置（仅更新暂停相关字段）
+     */
+    public void updateRandomPauseConfig(long taskId, boolean enabled, int minMinutes, int maxMinutes) {
+        android.util.Log.d("TaskEditViewModel", "updateRandomPauseConfig: taskId=" + taskId
+            + ", enabled=" + enabled + ", min=" + minMinutes + ", max=" + maxMinutes);
+        executor.execute(() -> {
+            try {
+                taskDao.updateRandomPauseConfig(taskId, enabled, minMinutes, maxMinutes, System.currentTimeMillis());
+                android.util.Log.d("TaskEditViewModel", "Random pause config updated for task: " + taskId);
+            } catch (Exception e) {
+                android.util.Log.e("TaskEditViewModel", "Update random pause config failed", e);
+                e.printStackTrace();
+            }
+        });
+    }
 
     /**
      * 删除任务

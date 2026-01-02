@@ -6,6 +6,10 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -68,6 +72,11 @@ public class TaskEditActivity extends AppCompatActivity {
     private boolean randomPauseEnabled = false;
     private int minPauseMinutes = 2;
     private int maxPauseMinutes = 6;
+    
+    // 原始任务的创建时间和启用状态（用于自动保存）
+    private long originalCreatedAt = 0;
+    private boolean originalEnabled = true;
+    private int originalVolume = 100;
 
     // 音频文件列表
     private final List<String> audioPaths = new ArrayList<>();
@@ -75,6 +84,12 @@ public class TaskEditActivity extends AppCompatActivity {
     
     // 蓝牙辅助类
     private BluetoothHelper bluetoothHelper;
+    
+    // 自动保存相关
+    private Handler autoSaveHandler;
+    private Runnable autoSaveRunnable;
+    private boolean isInitializing = true;
+    private static final long AUTO_SAVE_DELAY = 500; // 500ms延迟
 
     // 权限请求
     private final ActivityResultLauncher<String> requestPermissionLauncher =
@@ -119,6 +134,8 @@ public class TaskEditActivity extends AppCompatActivity {
         taskId = getIntent().getLongExtra(EXTRA_TASK_ID, -1);
 
         bluetoothHelper = new BluetoothHelper(this);
+        autoSaveHandler = new Handler(Looper.getMainLooper());
+        autoSaveRunnable = this::autoSave;
 
         setupToolbar();
         setupViewModel();
@@ -126,6 +143,124 @@ public class TaskEditActivity extends AppCompatActivity {
         setupClickListeners();
         setupBluetoothUI();
         setupDefaultValues();
+        setupAutoSaveListeners();
+    }
+    
+    /**
+     * 设置自动保存监听器
+     */
+    private void setupAutoSaveListeners() {
+        // 通用文本变化监听器
+        TextWatcher textWatcher = new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (!isInitializing && taskId > 0) {
+                    scheduleAutoSave();
+                }
+            }
+        };
+        
+        // 任务名称
+        binding.editTaskName.addTextChangedListener(textWatcher);
+        // 暂停时间
+        binding.editMinPause.addTextChangedListener(textWatcher);
+        binding.editMaxPause.addTextChangedListener(textWatcher);
+    }
+    
+    /**
+     * 调度自动保存
+     */
+    private void scheduleAutoSave() {
+        autoSaveHandler.removeCallbacks(autoSaveRunnable);
+        autoSaveHandler.postDelayed(autoSaveRunnable, AUTO_SAVE_DELAY);
+    }
+    
+    /**
+     * 执行自动保存
+     */
+    private void autoSave() {
+        // 构建任务对象
+        TaskEntity task = buildTaskForAutoSave();
+        if (task == null) return;
+        
+        android.util.Log.d("TaskEditActivity", "autoSave: taskId=" + taskId + ", name=" + task.getName());
+        
+        if (taskId > 0) {
+            // 编辑模式：直接更新
+            task.setId(taskId);
+            viewModel.saveTaskSilently(task, savedId -> {
+                // 更新调度
+                TaskSchedulerService scheduler = new TaskSchedulerService(this);
+                scheduler.scheduleTask(task);
+            });
+        } else {
+            // 新建模式：插入并获取ID
+            viewModel.saveTaskSilently(task, savedId -> {
+                taskId = savedId;
+                task.setId(savedId);
+                android.util.Log.d("TaskEditActivity", "New task created with id=" + savedId);
+                // 更新菜单（显示日志按钮）
+                invalidateOptionsMenu();
+                // 调度任务
+                TaskSchedulerService scheduler = new TaskSchedulerService(this);
+                scheduler.scheduleTask(task);
+            });
+        }
+    }
+    
+    /**
+     * 构建用于自动保存的任务（不验证随机暂停范围）
+     */
+    private TaskEntity buildTaskForAutoSave() {
+        String name = binding.editTaskName.getText().toString().trim();
+        if (name.isEmpty()) {
+            name = "未命名任务";
+        }
+        
+        // 从输入框读取暂停时间
+        String minStr = binding.editMinPause.getText().toString().trim();
+        String maxStr = binding.editMaxPause.getText().toString().trim();
+        if (!minStr.isEmpty()) {
+            try {
+                minPauseMinutes = Integer.parseInt(minStr);
+            } catch (NumberFormatException ignored) {}
+        }
+        if (!maxStr.isEmpty()) {
+            try {
+                maxPauseMinutes = Integer.parseInt(maxStr);
+            } catch (NumberFormatException ignored) {}
+        }
+        
+        boolean allDayPlay = binding.switchAllDayPlay.isChecked();
+        randomPauseEnabled = binding.switchRandomPause.isChecked();
+        
+        TaskEntity task = new TaskEntity();
+        if (taskId > 0) {
+            task.setId(taskId);
+        }
+        task.setName(name);
+        task.setStartTime(String.format("%02d:%02d", selectedStartHour, selectedStartMinute));
+        task.setEndTime(String.format("%02d:%02d", selectedEndHour, selectedEndMinute));
+        task.setPlayMode(currentPlayMode);
+        task.setRepeatDays(currentRepeatDays);
+        task.setEnabled(originalEnabled);
+        task.setVolume(originalVolume);
+        task.setAudioPaths(Converters.toAudioPathsJson(audioPaths));
+        task.setOutputDevice(currentOutputDevice);
+        task.setAllDayPlay(allDayPlay);
+        task.setRandomPauseEnabled(randomPauseEnabled);
+        task.setMinPauseMinutes(minPauseMinutes);
+        task.setMaxPauseMinutes(maxPauseMinutes);
+        task.setCreatedAt(originalCreatedAt);
+        task.setUpdatedAt(System.currentTimeMillis());
+        
+        return task;
     }
 
     private void setupToolbar() {
@@ -153,10 +288,7 @@ public class TaskEditActivity extends AppCompatActivity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
-        if (id == R.id.action_save) {
-            saveTask();
-            return true;
-        } else if (id == R.id.action_view_logs) {
+        if (id == R.id.action_view_logs) {
             openTaskLogs();
             return true;
         }
@@ -170,17 +302,11 @@ public class TaskEditActivity extends AppCompatActivity {
         if (taskId > 0) {
             viewModel.loadTask(taskId);
             viewModel.getTask().observe(this, this::populateTaskData);
+        } else {
+            // 新建任务：设置默认值后立即创建
+            originalCreatedAt = System.currentTimeMillis();
+            isInitializing = false;
         }
-
-        // 观察保存结果
-        viewModel.getSaveResult().observe(this, success -> {
-            if (success) {
-                Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show();
-                finish();
-            } else {
-                Toast.makeText(this, "保存失败", Toast.LENGTH_SHORT).show();
-            }
-        });
     }
 
     private void setupAudioList() {
@@ -192,6 +318,9 @@ public class TaskEditActivity extends AppCompatActivity {
         ItemTouchHelper itemTouchHelper = new ItemTouchHelper(callback);
         itemTouchHelper.attachToRecyclerView(binding.recyclerViewAudio);
         audioAdapter.setItemTouchHelper(itemTouchHelper);
+        
+        // 拖拽排序完成后自动保存
+        audioAdapter.setOnOrderChangedListener(this::triggerAutoSave);
         
         binding.recyclerViewAudio.setLayoutManager(new LinearLayoutManager(this));
         binding.recyclerViewAudio.setAdapter(audioAdapter);
@@ -210,6 +339,7 @@ public class TaskEditActivity extends AppCompatActivity {
         binding.switchAllDayPlay.setOnCheckedChangeListener((buttonView, isChecked) -> {
             // 全天播放时隐藏时间范围选择
             binding.layoutTimeRange.setVisibility(isChecked ? View.GONE : View.VISIBLE);
+            triggerAutoSave();
         });
 
         // 选择音频按钮
@@ -234,12 +364,23 @@ public class TaskEditActivity extends AppCompatActivity {
             if (isChecked) {
                 validatePauseRange();
             }
+            triggerAutoSave();
         });
+    }
+    
+    /**
+     * 触发自动保存（检查条件后调度）
+     */
+    private void triggerAutoSave() {
+        if (!isInitializing && taskId > 0) {
+            scheduleAutoSave();
+        }
     }
     
     private void togglePlayMode() {
         currentPlayMode = (currentPlayMode + 1) % 3;
         updatePlayModeDisplay();
+        triggerAutoSave();
     }
     
     private void updatePlayModeDisplay() {
@@ -261,6 +402,7 @@ public class TaskEditActivity extends AppCompatActivity {
     private void toggleOutputDevice() {
         currentOutputDevice = (currentOutputDevice + 1) % 2;
         updateOutputDeviceDisplay();
+        triggerAutoSave();
         
         // 切换到蓝牙时检查权限
         if (currentOutputDevice == TaskEntity.OUTPUT_DEVICE_BLUETOOTH) {
@@ -290,6 +432,7 @@ public class TaskEditActivity extends AppCompatActivity {
                 .setOnDaysSelectedListener(days -> {
                     currentRepeatDays = days;
                     updateRepeatDaysDisplay();
+                    triggerAutoSave();
                 })
                 .show();
     }
@@ -440,6 +583,7 @@ public class TaskEditActivity extends AppCompatActivity {
                     audioAdapter.notifyDataSetChanged();
                     updateMusicListVisibility();
                     Toast.makeText(this, "已添加 " + selectedUris.size() + " 首音乐", Toast.LENGTH_SHORT).show();
+                    triggerAutoSave();
                 })
                 .show();
     }
@@ -496,6 +640,7 @@ public class TaskEditActivity extends AppCompatActivity {
             audioPaths.add(uriString);
             audioAdapter.notifyItemInserted(audioPaths.size() - 1);
             updateMusicListVisibility();
+            triggerAutoSave();
         }
     }
 
@@ -523,6 +668,7 @@ public class TaskEditActivity extends AppCompatActivity {
             audioAdapter.notifyItemRemoved(position);
             audioAdapter.notifyItemRangeChanged(position, audioPaths.size());
             updateMusicListVisibility();
+            triggerAutoSave();
         }
     }
 
@@ -542,6 +688,7 @@ public class TaskEditActivity extends AppCompatActivity {
                     selectedStartHour = hour;
                     selectedStartMinute = minute;
                     updateStartTimeDisplay();
+                    triggerAutoSave();
                 })
                 .show();
     }
@@ -555,6 +702,7 @@ public class TaskEditActivity extends AppCompatActivity {
                     selectedEndHour = hour;
                     selectedEndMinute = minute;
                     updateEndTimeDisplay();
+                    triggerAutoSave();
                 })
                 .show();
     }
@@ -571,6 +719,11 @@ public class TaskEditActivity extends AppCompatActivity {
 
     private void populateTaskData(TaskEntity task) {
         if (task == null) return;
+
+        // 保存原始值（用于自动保存）
+        originalCreatedAt = task.getCreatedAt();
+        originalEnabled = task.isEnabled();
+        originalVolume = task.getVolume();
 
         binding.editTaskName.setText(task.getName());
 
@@ -623,102 +776,9 @@ public class TaskEditActivity extends AppCompatActivity {
         binding.layoutPauseRange.setVisibility(randomPauseEnabled ? View.VISIBLE : View.GONE);
         binding.editMinPause.setText(String.valueOf(minPauseMinutes));
         binding.editMaxPause.setText(String.valueOf(maxPauseMinutes));
-    }
-
-    private TaskEntity buildTask() {
-        String name = binding.editTaskName.getText().toString().trim();
-        if (name.isEmpty()) {
-            return null;
-        }
         
-        // 从Switch读取随机暂停开关状态
-        randomPauseEnabled = binding.switchRandomPause.isChecked();
-        
-        // 从输入框读取暂停时间（无论开关状态如何都读取）
-        String minStr = binding.editMinPause.getText().toString().trim();
-        String maxStr = binding.editMaxPause.getText().toString().trim();
-        if (!minStr.isEmpty()) {
-            try {
-                minPauseMinutes = Integer.parseInt(minStr);
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        if (!maxStr.isEmpty()) {
-            try {
-                maxPauseMinutes = Integer.parseInt(maxStr);
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        
-        android.util.Log.d("TaskEditActivity", "buildTask: randomPauseEnabled=" + randomPauseEnabled 
-            + ", minPauseMinutes=" + minPauseMinutes 
-            + ", maxPauseMinutes=" + maxPauseMinutes
-            + ", minStr=" + minStr + ", maxStr=" + maxStr);
-
-        // 获取全天播放设置
-        boolean allDayPlay = binding.switchAllDayPlay.isChecked();
-
-        // 构建任务
-        TaskEntity task = new TaskEntity();
-        if (taskId > 0) {
-            task.setId(taskId);
-        }
-        task.setName(name);
-        task.setStartTime(String.format("%02d:%02d", selectedStartHour, selectedStartMinute));
-        task.setEndTime(String.format("%02d:%02d", selectedEndHour, selectedEndMinute));
-        task.setPlayMode(currentPlayMode);
-        task.setRepeatDays(currentRepeatDays);
-        task.setEnabled(true);
-        task.setVolume(100);
-        task.setAudioPaths(Converters.toAudioPathsJson(audioPaths));
-        task.setOutputDevice(currentOutputDevice);
-        task.setAllDayPlay(allDayPlay);
-        
-        // 随机暂停配置
-        task.setRandomPauseEnabled(randomPauseEnabled);
-        task.setMinPauseMinutes(minPauseMinutes);
-        task.setMaxPauseMinutes(maxPauseMinutes);
-
-        long now = System.currentTimeMillis();
-        if (taskId <= 0) {
-            task.setCreatedAt(now);
-        }
-        task.setUpdatedAt(now);
-        
-        return task;
-    }
-
-    private void saveTask() {
-        // 验证输入
-        String name = binding.editTaskName.getText().toString().trim();
-        if (name.isEmpty()) {
-            binding.layoutTaskName.setError("请输入任务名称");
-            return;
-        }
-        binding.layoutTaskName.setError(null);
-
-        // 验证音频文件
-        if (audioPaths.isEmpty()) {
-            Toast.makeText(this, "请至少选择一个音频文件", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        
-        // 验证随机暂停配置
-        if (randomPauseEnabled && !validatePauseRange()) {
-            Toast.makeText(this, "请检查随机暂停时间配置", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        TaskEntity task = buildTask();
-        if (task == null) return;
-
-        // 保存任务并调度
-        viewModel.saveTask(task, savedTaskId -> {
-            // 调度任务
-            task.setId(savedTaskId);
-            TaskSchedulerService scheduler = new TaskSchedulerService(this);
-            scheduler.scheduleTask(task);
-        });
+        // 数据加载完成，允许自动保存
+        isInitializing = false;
     }
 
     @Override
@@ -731,6 +791,9 @@ public class TaskEditActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (autoSaveHandler != null) {
+            autoSaveHandler.removeCallbacks(autoSaveRunnable);
+        }
         binding = null;
     }
 }
