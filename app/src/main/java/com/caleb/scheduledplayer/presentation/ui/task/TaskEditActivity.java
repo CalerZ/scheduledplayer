@@ -638,6 +638,9 @@ public class TaskEditActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (audioAdapter != null) {
+            audioAdapter.release();
+        }
         binding = null;
     }
 }
