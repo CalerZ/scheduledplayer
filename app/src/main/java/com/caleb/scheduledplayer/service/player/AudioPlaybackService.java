@@ -703,6 +703,8 @@ public class AudioPlaybackService extends Service {
         void onTaskStarted(long taskId);
         void onTaskStopped(long taskId);
         void onPlaybackStateChanged(PlaybackState state);
+        // 新增：多任务播放状态回调
+        default void onAllPlaybackStatesChanged(Map<Long, PlaybackState> states) {}
     }
     
     /**
@@ -730,7 +732,7 @@ public class AudioPlaybackService extends Service {
     }
     
     /**
-     * 获取当前播放状态
+     * 获取当前播放状态（兼容旧接口，返回第一个播放任务）
      */
     public PlaybackState getPlaybackState() {
         if (taskPlayers.isEmpty()) {
@@ -759,7 +761,62 @@ public class AudioPlaybackService extends Service {
     }
     
     /**
-     * 暂停当前播放
+     * 获取所有任务的播放状态
+     */
+    public Map<Long, PlaybackState> getAllPlaybackStates() {
+        Map<Long, PlaybackState> states = new HashMap<>();
+        
+        Log.d(TAG, "getAllPlaybackStates: taskPlayers.size=" + taskPlayers.size());
+        
+        for (Map.Entry<Long, TaskPlayer> entry : taskPlayers.entrySet()) {
+            TaskPlayer player = entry.getValue();
+            Log.d(TAG, "getAllPlaybackStates: taskId=" + entry.getKey() + 
+                    ", player=" + (player != null) + 
+                    ", isPlaying=" + (player != null ? player.isPlaying : "null"));
+            
+            if (player != null && player.isPlaying) {
+                boolean actuallyPlaying = player.isActuallyPlaying() || (!player.isPaused && player.isPlaying);
+                PlaybackState state = new PlaybackState(
+                        actuallyPlaying,
+                        player.isPaused,
+                        player.getCurrentSongName(),
+                        player.task.getName(),
+                        player.task.getId(),
+                        player.getCurrentPosition(),
+                        player.getDuration()
+                );
+                states.put(entry.getKey(), state);
+            }
+        }
+        
+        Log.d(TAG, "getAllPlaybackStates: returning " + states.size() + " states");
+        return states;
+    }
+    
+    /**
+     * 暂停指定任务的播放
+     */
+    public void pausePlayback(long taskId) {
+        TaskPlayer player = taskPlayers.get(taskId);
+        if (player != null && player.isActuallyPlaying()) {
+            player.pause();
+            notifyPlaybackStateChanged();
+        }
+    }
+    
+    /**
+     * 恢复指定任务的播放
+     */
+    public void resumePlayback(long taskId) {
+        TaskPlayer player = taskPlayers.get(taskId);
+        if (player != null && player.isPaused) {
+            player.resume();
+            notifyPlaybackStateChanged();
+        }
+    }
+    
+    /**
+     * 暂停当前播放（兼容旧接口，暂停第一个播放的任务）
      */
     public void pausePlayback() {
         for (TaskPlayer player : taskPlayers.values()) {
@@ -772,7 +829,7 @@ public class AudioPlaybackService extends Service {
     }
     
     /**
-     * 恢复播放
+     * 恢复播放（兼容旧接口，恢复第一个暂停的任务）
      */
     public void resumePlayback() {
         for (TaskPlayer player : taskPlayers.values()) {
@@ -786,6 +843,8 @@ public class AudioPlaybackService extends Service {
     private void notifyPlaybackStateChanged() {
         if (playbackCallback != null) {
             playbackCallback.onPlaybackStateChanged(getPlaybackState());
+            // 同时通知所有播放状态
+            playbackCallback.onAllPlaybackStatesChanged(getAllPlaybackStates());
         }
     }
 

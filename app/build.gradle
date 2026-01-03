@@ -31,6 +31,13 @@ android {
     buildFeatures {
         viewBinding true
     }
+    
+    // 自定义 APK 输出文件名
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = "scheduled_music_player-${variant.versionName}-${variant.buildType.name}.apk"
+        }
+    }
 }
 
 dependencies {

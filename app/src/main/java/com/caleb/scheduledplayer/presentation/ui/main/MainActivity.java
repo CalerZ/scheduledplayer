@@ -80,7 +80,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
                 @Override
                 public void onPlaybackStateChanged(AudioPlaybackService.PlaybackState state) {
-                    runOnUiThread(() -> taskAdapter.updatePlaybackState(state));
+                    // 兼容旧接口，但优先使用 onAllPlaybackStatesChanged
+                }
+                
+                @Override
+                public void onAllPlaybackStatesChanged(java.util.Map<Long, AudioPlaybackService.PlaybackState> states) {
+                    runOnUiThread(() -> taskAdapter.updateAllPlaybackStates(states));
                 }
             });
             
@@ -92,7 +97,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         public void onServiceDisconnected(ComponentName name) {
             playbackService = null;
             serviceBound = false;
-            taskAdapter.updatePlaybackState(null);
+            taskAdapter.updateAllPlaybackStates(null);
         }
     };
 
@@ -170,9 +175,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         taskAdapter.setPlayPauseClickListener((taskId, isPaused) -> {
             if (serviceBound && playbackService != null) {
                 if (isPaused) {
-                    playbackService.resumePlayback();
+                    playbackService.resumePlayback(taskId);
                 } else {
-                    playbackService.pausePlayback();
+                    playbackService.pausePlayback(taskId);
                 }
             }
         });
@@ -213,8 +218,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             @Override
             public void run() {
                 if (serviceBound && playbackService != null) {
-                    AudioPlaybackService.PlaybackState state = playbackService.getPlaybackState();
-                    taskAdapter.updatePlaybackState(state);
+                    // 使用多任务播放状态
+                    java.util.Map<Long, AudioPlaybackService.PlaybackState> states = playbackService.getAllPlaybackStates();
+                    taskAdapter.updateAllPlaybackStates(states);
                     
                     // 只要服务绑定且有播放任务，就持续更新
                     int playingCount = playbackService.getPlayingTaskCount();
@@ -228,12 +234,13 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     
     private void updatePlaybackState() {
         if (!serviceBound || playbackService == null) {
-            taskAdapter.updatePlaybackState(null);
+            taskAdapter.updateAllPlaybackStates(null);
             return;
         }
         
-        AudioPlaybackService.PlaybackState state = playbackService.getPlaybackState();
-        taskAdapter.updatePlaybackState(state);
+        // 使用多任务播放状态
+        java.util.Map<Long, AudioPlaybackService.PlaybackState> states = playbackService.getAllPlaybackStates();
+        taskAdapter.updateAllPlaybackStates(states);
     }
     
     private void startProgressUpdates() {

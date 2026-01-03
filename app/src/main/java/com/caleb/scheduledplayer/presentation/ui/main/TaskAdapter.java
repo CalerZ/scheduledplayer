@@ -14,6 +14,9 @@ import com.caleb.scheduledplayer.data.entity.TaskEntity;
 import com.caleb.scheduledplayer.databinding.ItemTaskBinding;
 import com.caleb.scheduledplayer.service.player.AudioPlaybackService;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * 任务列表适配器
  */
@@ -24,8 +27,8 @@ public class TaskAdapter extends ListAdapter<TaskEntity, TaskAdapter.TaskViewHol
     private final OnTaskLongClickListener longClickListener;
     private OnPlayPauseClickListener playPauseClickListener;
     
-    // 当前播放状态
-    private AudioPlaybackService.PlaybackState currentPlaybackState;
+    // 所有任务的播放状态（taskId -> PlaybackState）
+    private Map<Long, AudioPlaybackService.PlaybackState> playbackStates = new HashMap<>();
 
     public interface OnTaskClickListener {
         void onTaskClick(TaskEntity task);
@@ -57,17 +60,31 @@ public class TaskAdapter extends ListAdapter<TaskEntity, TaskAdapter.TaskViewHol
     }
     
     /**
-     * 更新播放状态
+     * 更新播放状态（兼容旧接口）
      */
     public void updatePlaybackState(AudioPlaybackService.PlaybackState state) {
-        AudioPlaybackService.PlaybackState oldState = this.currentPlaybackState;
-        this.currentPlaybackState = state;
+        if (state != null && state.taskId != -1) {
+            Map<Long, AudioPlaybackService.PlaybackState> singleState = new HashMap<>();
+            singleState.put(state.taskId, state);
+            updateAllPlaybackStates(singleState);
+        } else {
+            // 清空所有状态
+            updateAllPlaybackStates(new HashMap<>());
+        }
+    }
+    
+    /**
+     * 更新所有任务的播放状态
+     */
+    public void updateAllPlaybackStates(Map<Long, AudioPlaybackService.PlaybackState> states) {
+        Map<Long, AudioPlaybackService.PlaybackState> oldStates = this.playbackStates;
+        this.playbackStates = states != null ? states : new HashMap<>();
         
         // 找到需要更新的任务位置
         for (int i = 0; i < getItemCount(); i++) {
             TaskEntity task = getItem(i);
-            boolean wasPlaying = oldState != null && oldState.taskId == task.getId();
-            boolean isPlaying = state != null && state.taskId == task.getId();
+            boolean wasPlaying = oldStates.containsKey(task.getId());
+            boolean isPlaying = playbackStates.containsKey(task.getId());
             
             if (wasPlaying || isPlaying) {
                 notifyItemChanged(i, "playback");
@@ -179,9 +196,11 @@ public class TaskAdapter extends ListAdapter<TaskEntity, TaskAdapter.TaskViewHol
             
             // 播放/暂停按钮点击
             binding.buttonPlayPause.setOnClickListener(v -> {
-                if (playPauseClickListener != null && currentPlaybackState != null) {
-                    playPauseClickListener.onPlayPauseClick(task.getId(), 
-                            currentPlaybackState.isPaused);
+                if (playPauseClickListener != null) {
+                    AudioPlaybackService.PlaybackState state = playbackStates.get(task.getId());
+                    if (state != null) {
+                        playPauseClickListener.onPlayPauseClick(task.getId(), state.isPaused);
+                    }
                 }
             });
             
@@ -190,28 +209,27 @@ public class TaskAdapter extends ListAdapter<TaskEntity, TaskAdapter.TaskViewHol
         }
         
         void updatePlaybackState(TaskEntity task) {
-            // 只要 taskId 匹配就显示播放信息
-            boolean isThisTaskPlaying = currentPlaybackState != null 
-                    && currentPlaybackState.taskId == task.getId()
-                    && currentPlaybackState.taskId != -1;
+            // 从 map 中获取该任务的播放状态
+            AudioPlaybackService.PlaybackState state = playbackStates.get(task.getId());
+            boolean isThisTaskPlaying = state != null && state.taskId != -1;
             
             if (isThisTaskPlaying) {
                 binding.layoutPlayback.setVisibility(View.VISIBLE);
                 
                 // 歌曲名
-                if (currentPlaybackState.currentSongName != null) {
-                    binding.textSongName.setText(currentPlaybackState.currentSongName);
+                if (state.currentSongName != null) {
+                    binding.textSongName.setText(state.currentSongName);
                 } else {
                     binding.textSongName.setText("正在播放...");
                 }
                 
                 // 时间
-                binding.textPlayTime.setText(formatTime(currentPlaybackState.currentPosition) 
-                        + " / " + formatTime(currentPlaybackState.duration));
+                binding.textPlayTime.setText(formatTime(state.currentPosition) 
+                        + " / " + formatTime(state.duration));
                 
                 // 进度条
-                if (currentPlaybackState.duration > 0) {
-                    int progress = (int) ((currentPlaybackState.currentPosition * 100L) / currentPlaybackState.duration);
+                if (state.duration > 0) {
+                    int progress = (int) ((state.currentPosition * 100L) / state.duration);
                     binding.progressBar.setProgress(progress);
                 } else {
                     binding.progressBar.setProgress(0);
@@ -219,7 +237,7 @@ public class TaskAdapter extends ListAdapter<TaskEntity, TaskAdapter.TaskViewHol
                 
                 // 播放/暂停按钮图标
                 binding.buttonPlayPause.setImageResource(
-                        currentPlaybackState.isPaused ? R.drawable.ic_play : R.drawable.ic_pause);
+                        state.isPaused ? R.drawable.ic_play : R.drawable.ic_pause);
             } else {
                 binding.layoutPlayback.setVisibility(View.GONE);
             }
