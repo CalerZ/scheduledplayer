@@ -167,12 +167,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         );
         
         // 设置播放/暂停点击监听
-        taskAdapter.setPlayPauseClickListener((taskId, isPaused, isRandomPausing) -> {
+        taskAdapter.setPlayPauseClickListener((taskId, isPaused) -> {
             if (serviceBound && playbackService != null) {
-                if (isRandomPausing) {
-                    // 随机暂停状态，跳过暂停播放下一首
-                    playbackService.skipRandomPause();
-                } else if (isPaused) {
+                if (isPaused) {
                     playbackService.resumePlayback();
                 } else {
                     playbackService.pausePlayback();

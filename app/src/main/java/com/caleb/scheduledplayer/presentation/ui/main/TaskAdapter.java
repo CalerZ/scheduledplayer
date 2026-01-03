@@ -40,7 +40,7 @@ public class TaskAdapter extends ListAdapter<TaskEntity, TaskAdapter.TaskViewHol
     }
     
     public interface OnPlayPauseClickListener {
-        void onPlayPauseClick(long taskId, boolean isPaused, boolean isRandomPausing);
+        void onPlayPauseClick(long taskId, boolean isPaused);
     }
 
     public TaskAdapter(OnTaskClickListener clickListener, 
@@ -181,8 +181,7 @@ public class TaskAdapter extends ListAdapter<TaskEntity, TaskAdapter.TaskViewHol
             binding.buttonPlayPause.setOnClickListener(v -> {
                 if (playPauseClickListener != null && currentPlaybackState != null) {
                     playPauseClickListener.onPlayPauseClick(task.getId(), 
-                            currentPlaybackState.isPaused, 
-                            currentPlaybackState.isRandomPausing);
+                            currentPlaybackState.isPaused);
                 }
             });
             
@@ -199,45 +198,28 @@ public class TaskAdapter extends ListAdapter<TaskEntity, TaskAdapter.TaskViewHol
             if (isThisTaskPlaying) {
                 binding.layoutPlayback.setVisibility(View.VISIBLE);
                 
-                // 检查是否处于随机暂停状态
-                if (currentPlaybackState.isRandomPausing) {
-                    // 随机暂停状态
-                    binding.textSongName.setText(itemView.getContext().getString(R.string.random_pause_status));
-                    
-                    // 显示剩余时间
-                    String remainingTime = formatTime((int) currentPlaybackState.remainingPauseMillis);
-                    binding.textPlayTime.setText(itemView.getContext().getString(R.string.random_pause_remaining, remainingTime));
-                    
-                    // 进度条隐藏或显示为0
-                    binding.progressBar.setProgress(0);
-                    
-                    // 播放按钮变为跳过图标（使用播放图标表示跳过暂停）
-                    binding.buttonPlayPause.setImageResource(R.drawable.ic_play);
+                // 歌曲名
+                if (currentPlaybackState.currentSongName != null) {
+                    binding.textSongName.setText(currentPlaybackState.currentSongName);
                 } else {
-                    // 正常播放状态
-                    // 歌曲名
-                    if (currentPlaybackState.currentSongName != null) {
-                        binding.textSongName.setText(currentPlaybackState.currentSongName);
-                    } else {
-                        binding.textSongName.setText("正在播放...");
-                    }
-                    
-                    // 时间
-                    binding.textPlayTime.setText(formatTime(currentPlaybackState.currentPosition) 
-                            + " / " + formatTime(currentPlaybackState.duration));
-                    
-                    // 进度条
-                    if (currentPlaybackState.duration > 0) {
-                        int progress = (int) ((currentPlaybackState.currentPosition * 100L) / currentPlaybackState.duration);
-                        binding.progressBar.setProgress(progress);
-                    } else {
-                        binding.progressBar.setProgress(0);
-                    }
-                    
-                    // 播放/暂停按钮图标
-                    binding.buttonPlayPause.setImageResource(
-                            currentPlaybackState.isPaused ? R.drawable.ic_play : R.drawable.ic_pause);
+                    binding.textSongName.setText("正在播放...");
                 }
+                
+                // 时间
+                binding.textPlayTime.setText(formatTime(currentPlaybackState.currentPosition) 
+                        + " / " + formatTime(currentPlaybackState.duration));
+                
+                // 进度条
+                if (currentPlaybackState.duration > 0) {
+                    int progress = (int) ((currentPlaybackState.currentPosition * 100L) / currentPlaybackState.duration);
+                    binding.progressBar.setProgress(progress);
+                } else {
+                    binding.progressBar.setProgress(0);
+                }
+                
+                // 播放/暂停按钮图标
+                binding.buttonPlayPause.setImageResource(
+                        currentPlaybackState.isPaused ? R.drawable.ic_play : R.drawable.ic_pause);
             } else {
                 binding.layoutPlayback.setVisibility(View.GONE);
             }

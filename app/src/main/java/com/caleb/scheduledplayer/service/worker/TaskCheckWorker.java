@@ -64,19 +64,25 @@ public class TaskCheckWorker extends Worker {
                     continue;
                 }
                 
-                // 解析任务时间
-                int startTimeMinutes = parseTimeToMinutes(task.getStartTime());
-                int endTimeMinutes = parseTimeToMinutes(task.getEndTime());
-                
-                // 检查是否在执行时间范围内
                 boolean shouldPlay = false;
                 
-                if (startTimeMinutes <= endTimeMinutes) {
-                    // 同一天内的任务
-                    shouldPlay = currentTimeMinutes >= startTimeMinutes && currentTimeMinutes < endTimeMinutes;
+                // 全天播放模式：只要今天需要执行就播放
+                if (task.isAllDayPlay()) {
+                    shouldPlay = true;
+                    Log.d(TAG, "任务 " + task.getId() + " 是全天播放模式");
                 } else {
-                    // 跨天任务
-                    shouldPlay = currentTimeMinutes >= startTimeMinutes || currentTimeMinutes < endTimeMinutes;
+                    // 解析任务时间
+                    int startTimeMinutes = parseTimeToMinutes(task.getStartTime());
+                    int endTimeMinutes = parseTimeToMinutes(task.getEndTime());
+                    
+                    // 检查是否在执行时间范围内
+                    if (startTimeMinutes <= endTimeMinutes) {
+                        // 同一天内的任务
+                        shouldPlay = currentTimeMinutes >= startTimeMinutes && currentTimeMinutes < endTimeMinutes;
+                    } else {
+                        // 跨天任务
+                        shouldPlay = currentTimeMinutes >= startTimeMinutes || currentTimeMinutes < endTimeMinutes;
+                    }
                 }
                 
                 if (shouldPlay) {

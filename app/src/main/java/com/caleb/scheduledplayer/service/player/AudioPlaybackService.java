@@ -107,13 +107,14 @@ public class AudioPlaybackService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        String action = intent != null ? intent.getAction() : "null";
+        long intentTaskId = intent != null ? intent.getLongExtra(EXTRA_TASK_ID, -1) : -1;
         Log.d(TAG, "onStartCommand: flags=" + flags + ", startId=" + startId + 
-              ", action=" + (intent != null ? intent.getAction() : "null"));
+              ", action=" + action + ", taskId=" + intentTaskId);
         // 立即启动前台服务，避免 ANR
         startForeground(NOTIFICATION_ID, createNotification());
         
         if (intent != null) {
-            String action = intent.getAction();
             if (action != null) {
                 switch (action) {
                     case ACTION_START_TASK:
@@ -465,12 +466,6 @@ public class AudioPlaybackService extends Service {
         private int currentIndex = 0;
         private boolean isPlaying = false;
         private boolean isPaused = false;
-        
-        // 随机暂停相关
-        private final Handler pauseHandler = new Handler(Looper.getMainLooper());
-        private Runnable pauseRunnable;
-        private boolean isRandomPausing = false;
-        private long pauseEndTime = 0;
 
         TaskPlayer(TaskEntity task, List<String> audioPaths) {
             this.task = task;
@@ -485,19 +480,12 @@ public class AudioPlaybackService extends Service {
         void start() {
             isPlaying = true;
             isPaused = false;
-            isRandomPausing = false;
             playCurrentTrack();
         }
 
         void stop() {
             isPlaying = false;
             isPaused = false;
-            // 清理随机暂停定时器
-            if (pauseRunnable != null) {
-                pauseHandler.removeCallbacks(pauseRunnable);
-            }
-            isRandomPausing = false;
-            pauseEndTime = 0;
             releaseMediaPlayer();
             if (playbackCallback != null) {
                 playbackCallback.onTaskStopped(task.getId());
@@ -516,28 +504,6 @@ public class AudioPlaybackService extends Service {
                 mediaPlayer.start();
                 isPaused = false;
             }
-        }
-        
-        /**
-         * 跳过随机暂停，立即播放下一首
-         */
-        void skipPause() {
-            if (isRandomPausing) {
-                Log.d(TAG, "Skipping random pause, playing next track");
-                pauseHandler.removeCallbacks(pauseRunnable);
-                isRandomPausing = false;
-                pauseEndTime = 0;
-                currentIndex++;
-                playCurrentTrack();
-            }
-        }
-        
-        /**
-         * 获取剩余暂停时间（毫秒）
-         */
-        long getRemainingPauseMillis() {
-            if (!isRandomPausing || pauseEndTime == 0) return 0;
-            return Math.max(0, pauseEndTime - System.currentTimeMillis());
         }
         
         boolean isActuallyPlaying() {
@@ -577,12 +543,6 @@ public class AudioPlaybackService extends Service {
         void stopWithoutCallback() {
             isPlaying = false;
             isPaused = false;
-            // 清理随机暂停定时器
-            if (pauseRunnable != null) {
-                pauseHandler.removeCallbacks(pauseRunnable);
-            }
-            isRandomPausing = false;
-            pauseEndTime = 0;
             releaseMediaPlayer();
         }
 
@@ -700,44 +660,8 @@ public class AudioPlaybackService extends Service {
         @Override
         public void onCompletion(MediaPlayer mp) {
             Log.d(TAG, "onCompletion: track finished, currentIndex=" + currentIndex);
-            
-            // 检查是否启用随机暂停
-            if (task.isRandomPauseEnabled()) {
-                startRandomPause();
-            } else {
-                currentIndex++;
-                playCurrentTrack();
-            }
-        }
-        
-        /**
-         * 开始随机暂停
-         */
-        private void startRandomPause() {
-            int minMs = task.getMinPauseMinutes() * 60 * 1000;
-            int maxMs = task.getMaxPauseMinutes() * 60 * 1000;
-            int pauseDuration = minMs + new java.util.Random().nextInt(Math.max(1, maxMs - minMs + 1));
-            
-            Log.d(TAG, "Starting random pause for " + (pauseDuration / 1000) + " seconds");
-            
-            isRandomPausing = true;
-            pauseEndTime = System.currentTimeMillis() + pauseDuration;
-            
-            // 释放当前 MediaPlayer
-            releaseMediaPlayer();
-            
-            // 通知 UI 更新
-            notifyPlaybackStateChanged();
-            
-            // 设置定时器
-            pauseRunnable = () -> {
-                Log.d(TAG, "Random pause ended, playing next track");
-                isRandomPausing = false;
-                pauseEndTime = 0;
-                currentIndex++;
-                playCurrentTrack();
-            };
-            pauseHandler.postDelayed(pauseRunnable, pauseDuration);
+            currentIndex++;
+            playCurrentTrack();
         }
 
         @Override
@@ -787,21 +711,16 @@ public class AudioPlaybackService extends Service {
     public static class PlaybackState {
         public final boolean isPlaying;
         public final boolean isPaused;
-        public final boolean isRandomPausing;      // 是否处于随机暂停中
-        public final long remainingPauseMillis;    // 剩余暂停时间（毫秒）
         public final String currentSongName;
         public final String taskName;
         public final long taskId;
         public final int currentPosition;
         public final int duration;
         
-        public PlaybackState(boolean isPlaying, boolean isPaused, boolean isRandomPausing,
-                           long remainingPauseMillis, String currentSongName, 
+        public PlaybackState(boolean isPlaying, boolean isPaused, String currentSongName, 
                            String taskName, long taskId, int currentPosition, int duration) {
             this.isPlaying = isPlaying;
             this.isPaused = isPaused;
-            this.isRandomPausing = isRandomPausing;
-            this.remainingPauseMillis = remainingPauseMillis;
             this.currentSongName = currentSongName;
             this.taskName = taskName;
             this.taskId = taskId;
@@ -815,7 +734,7 @@ public class AudioPlaybackService extends Service {
      */
     public PlaybackState getPlaybackState() {
         if (taskPlayers.isEmpty()) {
-            return new PlaybackState(false, false, false, 0, null, null, -1, 0, 0);
+            return new PlaybackState(false, false, null, null, -1, 0, 0);
         }
         
         // 获取第一个正在播放的任务
@@ -823,12 +742,10 @@ public class AudioPlaybackService extends Service {
             TaskPlayer player = entry.getValue();
             if (player != null && player.isPlaying) {
                 // 使用 isPlaying 标志而不是 isActuallyPlaying()，因为 MediaPlayer 准备期间 isActuallyPlaying() 可能返回 false
-                boolean actuallyPlaying = player.isActuallyPlaying() || (!player.isPaused && player.isPlaying && !player.isRandomPausing);
+                boolean actuallyPlaying = player.isActuallyPlaying() || (!player.isPaused && player.isPlaying);
                 return new PlaybackState(
                         actuallyPlaying,
                         player.isPaused,
-                        player.isRandomPausing,
-                        player.getRemainingPauseMillis(),
                         player.getCurrentSongName(),
                         player.task.getName(),
                         player.task.getId(),
@@ -838,7 +755,7 @@ public class AudioPlaybackService extends Service {
             }
         }
         
-        return new PlaybackState(false, false, false, 0, null, null, -1, 0, 0);
+        return new PlaybackState(false, false, null, null, -1, 0, 0);
     }
     
     /**
@@ -866,20 +783,6 @@ public class AudioPlaybackService extends Service {
             }
         }
     }
-    
-    /**
-     * 跳过随机暂停，立即播放下一首
-     */
-    public void skipRandomPause() {
-        for (TaskPlayer player : taskPlayers.values()) {
-            if (player != null && player.isRandomPausing) {
-                player.skipPause();
-                notifyPlaybackStateChanged();
-                break;
-            }
-        }
-    }
-    
     private void notifyPlaybackStateChanged() {
         if (playbackCallback != null) {
             playbackCallback.onPlaybackStateChanged(getPlaybackState());

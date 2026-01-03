@@ -40,6 +40,12 @@ public class TaskSchedulerService {
      * 调度单个任务
      */
     public void scheduleTask(TaskEntity task) {
+        Log.d(TAG, "scheduleTask called for task " + task.getId() + " (" + task.getName() + ")"
+                + ", enabled=" + task.isEnabled()
+                + ", allDayPlay=" + task.isAllDayPlay()
+                + ", startTime=" + task.getStartTime()
+                + ", repeatDays=" + task.getRepeatDays());
+        
         if (!task.isEnabled()) {
             cancelTask(task.getId());
             return;
@@ -70,30 +76,22 @@ public class TaskSchedulerService {
             shouldRunToday = (repeatDays & todayFlag) != 0;
         }
 
-        // 全天播放模式
+        // 全天播放模式：忽略开始时间，只要启用就立即播放
         if (task.isAllDayPlay()) {
-            Log.d(TAG, "Task " + task.getId() + " is all-day play mode");
+            Log.d(TAG, "Task " + task.getId() + " is all-day play mode, shouldRunToday=" + shouldRunToday);
             
-            if (shouldRunToday && now >= todayStartTime) {
-                // 今天的开始时间已过，立即开始播放
+            if (shouldRunToday) {
+                // 今天需要执行，立即开始播放
                 Log.d(TAG, "Task " + task.getId() + " all-day mode: starting immediately");
                 AudioPlaybackService.startTaskPlayback(context, task.getId());
-            } else if (shouldRunToday) {
-                // 今天的开始时间未到，停止播放（如果正在播放），设置开始闹钟
-                Log.d(TAG, "Task " + task.getId() + " all-day mode: start time not reached, stopping if playing");
-                AudioPlaybackService.stopTaskPlayback(context, task.getId());
-                setAlarm(task.getId(), todayStartTime, true);
-                Log.d(TAG, "Task " + task.getId() + " all-day mode: scheduled start at " + startCalendar.getTime());
             } else {
                 // 今天不需要执行，停止播放（如果正在播放）
                 Log.d(TAG, "Task " + task.getId() + " all-day mode: not scheduled for today, stopping if playing");
                 AudioPlaybackService.stopTaskPlayback(context, task.getId());
             }
             
-            // 调度下一次开始（用于重复任务）
-            scheduleNextStartAllDay(task, startHour, startMinute, repeatDays);
-            
-            // 全天播放不设置结束闹钟
+            // 全天播放不需要设置闹钟
+            cancelAlarm(task.getId(), true);
             cancelAlarm(task.getId(), false);
             return;
         }

@@ -90,24 +90,6 @@ public class TaskEntity {
     @ColumnInfo(name = "all_day_play", defaultValue = "0")
     private boolean allDayPlay;
 
-    /**
-     * 是否启用随机暂停
-     */
-    @ColumnInfo(name = "random_pause_enabled", defaultValue = "0")
-    private boolean randomPauseEnabled;
-
-    /**
-     * 最小暂停时间（分钟）
-     */
-    @ColumnInfo(name = "min_pause_minutes", defaultValue = "2")
-    private int minPauseMinutes = 2;
-
-    /**
-     * 最大暂停时间（分钟）
-     */
-    @ColumnInfo(name = "max_pause_minutes", defaultValue = "6")
-    private int maxPauseMinutes = 6;
-
     // 播放模式常量
     public static final int PLAY_MODE_SEQUENCE = 0;
     public static final int PLAY_MODE_RANDOM = 1;
@@ -233,30 +215,6 @@ public class TaskEntity {
 
     public void setAllDayPlay(boolean allDayPlay) {
         this.allDayPlay = allDayPlay;
-    }
-
-    public boolean isRandomPauseEnabled() {
-        return randomPauseEnabled;
-    }
-
-    public void setRandomPauseEnabled(boolean randomPauseEnabled) {
-        this.randomPauseEnabled = randomPauseEnabled;
-    }
-
-    public int getMinPauseMinutes() {
-        return minPauseMinutes;
-    }
-
-    public void setMinPauseMinutes(int minPauseMinutes) {
-        this.minPauseMinutes = minPauseMinutes;
-    }
-
-    public int getMaxPauseMinutes() {
-        return maxPauseMinutes;
-    }
-
-    public void setMaxPauseMinutes(int maxPauseMinutes) {
-        this.maxPauseMinutes = maxPauseMinutes;
     }
 
     /**

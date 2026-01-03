@@ -70,21 +70,14 @@ public class TaskEditViewModel extends AndroidViewModel {
      * 保存任务（带回调）
      */
     public void saveTask(TaskEntity taskEntity, OnTaskSavedCallback callback) {
-        android.util.Log.d("TaskEditViewModel", "saveTask: id=" + taskEntity.getId()
-            + ", randomPauseEnabled=" + taskEntity.isRandomPauseEnabled()
-            + ", minPauseMinutes=" + taskEntity.getMinPauseMinutes()
-            + ", maxPauseMinutes=" + taskEntity.getMaxPauseMinutes());
-        
         executor.execute(() -> {
             try {
                 long taskId;
                 if (taskEntity.getId() > 0) {
                     taskDao.update(taskEntity);
                     taskId = taskEntity.getId();
-                    android.util.Log.d("TaskEditViewModel", "Task updated, id=" + taskId);
                 } else {
                     taskId = taskDao.insert(taskEntity);
-                    android.util.Log.d("TaskEditViewModel", "Task inserted, id=" + taskId);
                 }
                 
                 // 在主线程回调
@@ -95,7 +88,6 @@ public class TaskEditViewModel extends AndroidViewModel {
                 
                 saveResult.postValue(true);
             } catch (Exception e) {
-                android.util.Log.e("TaskEditViewModel", "Save failed", e);
                 e.printStackTrace();
                 saveResult.postValue(false);
             }
@@ -122,23 +114,6 @@ public class TaskEditViewModel extends AndroidViewModel {
                     mainHandler.post(() -> callback.onTaskSaved(savedId));
                 }
             } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
-    }
-    
-    /**
-     * 更新随机暂停配置（仅更新暂停相关字段）
-     */
-    public void updateRandomPauseConfig(long taskId, boolean enabled, int minMinutes, int maxMinutes) {
-        android.util.Log.d("TaskEditViewModel", "updateRandomPauseConfig: taskId=" + taskId
-            + ", enabled=" + enabled + ", min=" + minMinutes + ", max=" + maxMinutes);
-        executor.execute(() -> {
-            try {
-                taskDao.updateRandomPauseConfig(taskId, enabled, minMinutes, maxMinutes, System.currentTimeMillis());
-                android.util.Log.d("TaskEditViewModel", "Random pause config updated for task: " + taskId);
-            } catch (Exception e) {
-                android.util.Log.e("TaskEditViewModel", "Update random pause config failed", e);
                 e.printStackTrace();
             }
         });

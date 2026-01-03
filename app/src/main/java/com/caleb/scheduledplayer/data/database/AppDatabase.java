@@ -18,7 +18,7 @@ import com.caleb.scheduledplayer.data.entity.TaskLogEntity;
  */
 @Database(
         entities = {TaskEntity.class, TaskLogEntity.class},
-        version = 6,
+        version = 7,
         exportSchema = false
 )
 public abstract class AppDatabase extends RoomDatabase {
@@ -137,6 +137,43 @@ public abstract class AppDatabase extends RoomDatabase {
     };
 
     /**
+     * 数据库迁移：版本 6 -> 7（删除随机暂停相关列）
+     */
+    static final Migration MIGRATION_6_7 = new Migration(6, 7) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            // SQLite 不支持直接删除列，需要重建表
+            database.execSQL(
+                    "CREATE TABLE `tasks_new` (" +
+                    "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`name` TEXT NOT NULL, " +
+                    "`enabled` INTEGER NOT NULL, " +
+                    "`start_time` TEXT NOT NULL, " +
+                    "`end_time` TEXT NOT NULL, " +
+                    "`audio_paths` TEXT, " +
+                    "`play_mode` INTEGER NOT NULL, " +
+                    "`volume` INTEGER NOT NULL, " +
+                    "`repeat_days` INTEGER NOT NULL, " +
+                    "`output_device` INTEGER NOT NULL DEFAULT 0, " +
+                    "`all_day_play` INTEGER NOT NULL DEFAULT 0, " +
+                    "`created_at` INTEGER NOT NULL, " +
+                    "`updated_at` INTEGER NOT NULL)"
+            );
+            // 复制数据（不包含随机暂停字段）
+            database.execSQL(
+                    "INSERT INTO `tasks_new` (`id`, `name`, `enabled`, `start_time`, `end_time`, `audio_paths`, " +
+                    "`play_mode`, `volume`, `repeat_days`, `output_device`, `all_day_play`, `created_at`, `updated_at`) " +
+                    "SELECT `id`, `name`, `enabled`, `start_time`, `end_time`, `audio_paths`, " +
+                    "`play_mode`, `volume`, `repeat_days`, `output_device`, `all_day_play`, `created_at`, `updated_at` FROM `tasks`"
+            );
+            // 删除旧表
+            database.execSQL("DROP TABLE `tasks`");
+            // 重命名新表
+            database.execSQL("ALTER TABLE `tasks_new` RENAME TO `tasks`");
+        }
+    };
+
+    /**
      * 获取数据库单例
      */
     public static AppDatabase getInstance(Context context) {
@@ -148,7 +185,7 @@ public abstract class AppDatabase extends RoomDatabase {
                             AppDatabase.class,
                             DATABASE_NAME
                     )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .fallbackToDestructiveMigration()
                     .build();
                 }

@@ -32,16 +32,6 @@
     <string name="play_mode_random">随机播放</string>
     <string name="play_mode_loop">循环列表</string>
     
-    <!-- 随机暂停 -->
-    <string name="random_pause">歌曲间随机暂停</string>
-    <string name="random_pause_range">暂停时间范围</string>
-    <string name="random_pause_min">最小(分钟)</string>
-    <string name="random_pause_max">最大(分钟)</string>
-    <string name="random_pause_status">暂停中</string>
-    <string name="random_pause_remaining">还剩 %s</string>
-    <string name="random_pause_error_min_greater_than_max">最小时间不能大于最大时间</string>
-    <string name="random_pause_error_invalid_range">请输入1-30之间的数值</string>
-    
     <!-- 通知 -->
     <string name="notification_channel_name">播放服务</string>
     <string name="notification_channel_description">显示音频播放状态</string>
