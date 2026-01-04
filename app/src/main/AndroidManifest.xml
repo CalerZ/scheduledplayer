@@ -88,6 +88,12 @@
             android:exported="false"
             android:parentActivityName=".presentation.ui.music.MusicManagerActivity" />
 
+        <!-- 设置界面 -->
+        <activity
+            android:name=".presentation.ui.settings.SettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".presentation.ui.main.MainActivity" />
+
         <!-- 音频播放前台服务 -->
         <service
             android:name=".service.player.AudioPlaybackService"

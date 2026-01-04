@@ -18,6 +18,8 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
 
+import android.bluetooth.BluetoothDevice;
+
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
@@ -30,6 +32,8 @@ import com.caleb.scheduledplayer.data.repository.TaskLogRepository;
 import com.caleb.scheduledplayer.presentation.ui.main.MainActivity;
 import com.caleb.scheduledplayer.util.AudioFileValidator;
 import com.caleb.scheduledplayer.util.BluetoothHelper;
+import com.caleb.scheduledplayer.util.BluetoothReconnectManager;
+import com.caleb.scheduledplayer.util.AppSettings;
 import com.caleb.scheduledplayer.util.LogErrorType;
 
 import java.io.FileNotFoundException;
@@ -51,6 +55,7 @@ public class AudioPlaybackService extends Service {
 
     private static final String TAG = "AudioPlaybackService";
     private static final int NOTIFICATION_ID = 1;
+    private static final int BLUETOOTH_NOTIFICATION_ID = 2;
 
     // Intent Actions
     public static final String ACTION_START_TASK = "com.caleb.scheduledplayer.START_TASK";
@@ -70,6 +75,11 @@ public class AudioPlaybackService extends Service {
     private boolean hasAudioFocus = false;
     private TaskLogRepository logRepository;
     private BluetoothHelper bluetoothHelper;
+    
+    // 蓝牙保持和重连相关
+    private AppSettings appSettings;
+    private SilentAudioPlayer silentAudioPlayer;
+    private BluetoothReconnectManager reconnectManager;
 
     private PlaybackCallback playbackCallback;
 
@@ -77,6 +87,59 @@ public class AudioPlaybackService extends Service {
         public AudioPlaybackService getService() {
             return AudioPlaybackService.this;
         }
+    }
+    
+    /**
+     * 静音音频播放状态
+     */
+    public enum SilentAudioStatus {
+        PLAYING,      // 播放中
+        STOPPED,      // 已停止
+        DISABLED,     // 功能已关闭
+        NO_BLUETOOTH  // 未连接蓝牙
+    }
+    
+    /**
+     * 获取静音音频播放状态
+     */
+    public SilentAudioStatus getSilentAudioStatus() {
+        if (!appSettings.isKeepBluetoothAlive()) {
+            return SilentAudioStatus.DISABLED;
+        }
+        if (!bluetoothHelper.isBluetoothAudioConnected()) {
+            return SilentAudioStatus.NO_BLUETOOTH;
+        }
+        if (silentAudioPlayer == null) {
+            return SilentAudioStatus.STOPPED;
+        }
+        if (silentAudioPlayer.isPlaying()) {
+            return SilentAudioStatus.PLAYING;
+        }
+        return SilentAudioStatus.STOPPED;
+    }
+    
+    /**
+     * 获取蓝牙连接状态
+     */
+    public boolean isBluetoothConnected() {
+        return bluetoothHelper != null && bluetoothHelper.isBluetoothAudioConnected();
+    }
+    
+    /**
+     * 获取当前连接的蓝牙设备名称
+     */
+    public String getConnectedBluetoothDeviceName() {
+        if (bluetoothHelper != null) {
+            BluetoothDevice device = bluetoothHelper.getLastConnectedDevice();
+            if (device != null) {
+                try {
+                    return device.getName();
+                } catch (SecurityException e) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     @Override
@@ -88,6 +151,11 @@ public class AudioPlaybackService extends Service {
         logRepository = new TaskLogRepository(getApplication());
         bluetoothHelper = new BluetoothHelper(this);
         acquireWakeLock();
+        
+        // 初始化设置和蓝牙保持组件
+        appSettings = new AppSettings(this);
+        silentAudioPlayer = new SilentAudioPlayer(this);
+        reconnectManager = new BluetoothReconnectManager(this, bluetoothHelper);
         
         // 开始监听蓝牙连接状态
         bluetoothHelper.startListening(new BluetoothHelper.BluetoothConnectionListener() {
@@ -102,7 +170,22 @@ public class AudioPlaybackService extends Service {
                 // 停止所有需要蓝牙的任务
                 mainHandler.post(() -> stopBluetoothOnlyTasks());
             }
+            
+            @Override
+            public void onBluetoothDeviceDisconnected(BluetoothDevice device, String deviceName) {
+                Log.d(TAG, "Bluetooth device disconnected: " + deviceName);
+                mainHandler.post(() -> handleBluetoothDisconnected(device, deviceName));
+            }
+            
+            @Override
+            public void onBluetoothDeviceConnected(BluetoothDevice device, String deviceName) {
+                Log.d(TAG, "Bluetooth device connected: " + deviceName);
+                mainHandler.post(() -> handleBluetoothConnected(device, deviceName));
+            }
         });
+        
+        // 初始化蓝牙保持活跃
+        initBluetoothKeepAlive();
     }
 
     @Override
@@ -154,6 +237,13 @@ public class AudioPlaybackService extends Service {
         abandonAudioFocus();
         if (bluetoothHelper != null) {
             bluetoothHelper.stopListening();
+        }
+        if (silentAudioPlayer != null) {
+            silentAudioPlayer.stop();
+            silentAudioPlayer.release();
+        }
+        if (reconnectManager != null) {
+            reconnectManager.release();
         }
         if (executorService != null) {
             executorService.shutdown();
@@ -322,6 +412,9 @@ public class AudioPlaybackService extends Service {
         TaskPlayer player = new TaskPlayer(task, audioPaths);
         taskPlayers.put(task.getId(), player);
         player.start();
+        
+        // 暂停静音音频
+        onTaskPlaybackStarted();
 
         // 启动前台服务
         startForeground(NOTIFICATION_ID, createNotification());
@@ -359,9 +452,157 @@ public class AudioPlaybackService extends Service {
             stopTask(taskId);
         }
     }
+    
+    // ==================== 蓝牙保持和重连功能 ====================
+    
+    /**
+     * 初始化蓝牙保持活跃功能
+     */
+    private void initBluetoothKeepAlive() {
+        if (appSettings.isKeepBluetoothAlive() && bluetoothHelper.isBluetoothAudioConnected()) {
+            // 始终启动静音播放（不受任务播放状态影响）
+            silentAudioPlayer.start();
+            Log.d(TAG, "Started silent audio for bluetooth keep-alive");
+        }
+    }
+    
+    /**
+     * 处理蓝牙断开事件
+     */
+    private void handleBluetoothDisconnected(BluetoothDevice device, String deviceName) {
+        // 1. 停止静音播放
+        silentAudioPlayer.stop();
+        
+        // 2. 发送通知
+        boolean hasPlayingTasks = !taskPlayers.isEmpty();
+        showBluetoothDisconnectedNotification(deviceName, hasPlayingTasks);
+        
+        // 3. 尝试自动重连
+        if (appSettings.isBluetoothAutoReconnect() && device != null) {
+            reconnectManager.saveDisconnectedDevice(device);
+            reconnectManager.startReconnect(new BluetoothReconnectManager.ReconnectCallback() {
+                @Override
+                public void onReconnectSuccess() {
+                    Log.d(TAG, "Bluetooth reconnect successful");
+                }
+                
+                @Override
+                public void onReconnectFailed(String reason) {
+                    Log.d(TAG, "Bluetooth reconnect failed: " + reason);
+                }
+                
+                @Override
+                public void onReconnectAttempt(int attempt, int maxAttempts) {
+                    Log.d(TAG, "Bluetooth reconnect attempt " + attempt + "/" + maxAttempts);
+                }
+            });
+        }
+    }
+    
+    /**
+     * 处理蓝牙连接事件
+     */
+    private void handleBluetoothConnected(BluetoothDevice device, String deviceName) {
+        // 1. 停止重连尝试
+        reconnectManager.stopReconnect();
+        
+        // 2. 发送通知
+        showBluetoothConnectedNotification(deviceName);
+        
+        // 3. 恢复静音播放（始终启动，不受任务播放状态影响）
+        if (appSettings.isKeepBluetoothAlive()) {
+            silentAudioPlayer.start();
+            Log.d(TAG, "Resumed silent audio after bluetooth reconnect");
+        }
+    }
+    
+    /**
+     * 显示蓝牙断开通知
+     */
+    private void showBluetoothDisconnectedNotification(String deviceName, boolean hasPlayingTasks) {
+        String title = getString(R.string.bluetooth_disconnected);
+        String content;
+        if (hasPlayingTasks) {
+            content = getString(R.string.bluetooth_disconnected_audio_switched);
+        } else {
+            content = getString(R.string.bluetooth_disconnected_device, deviceName);
+        }
+        
+        showBluetoothNotification(title, content);
+    }
+    
+    /**
+     * 显示蓝牙连接通知
+     */
+    private void showBluetoothConnectedNotification(String deviceName) {
+        String title = getString(R.string.bluetooth_connected);
+        String content = getString(R.string.bluetooth_connected_device, deviceName);
+        
+        showBluetoothNotification(title, content);
+    }
+    
+    /**
+     * 显示蓝牙状态通知
+     */
+    private void showBluetoothNotification(String title, String content) {
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this, 0, notificationIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        
+        Notification notification = new NotificationCompat.Builder(this, ScheduledPlayerApp.NOTIFICATION_CHANNEL_PLAYBACK)
+                .setContentTitle(title)
+                .setContentText(content)
+                .setSmallIcon(R.drawable.ic_bluetooth_speaker)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build();
+        
+        android.app.NotificationManager notificationManager = 
+                (android.app.NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (notificationManager != null) {
+            notificationManager.notify(BLUETOOTH_NOTIFICATION_ID, notification);
+        }
+    }
+    
+    /**
+     * 设置变更回调（从 SettingsActivity 调用）
+     */
+    public void onSettingsChanged() {
+        Log.d(TAG, "Settings changed, updating bluetooth keep-alive state");
+        
+        if (appSettings.isKeepBluetoothAlive()) {
+            // 开启保持蓝牙活跃（始终启动，不受任务播放状态影响）
+            if (bluetoothHelper.isBluetoothAudioConnected()) {
+                silentAudioPlayer.start();
+            }
+        } else {
+            // 关闭保持蓝牙活跃
+            silentAudioPlayer.stop();
+        }
+    }
+    
+    /**
+     * 任务开始播放时（静音音频保持播放，不暂停）
+     */
+    private void onTaskPlaybackStarted() {
+        // 静音音频持续播放，不暂停，以保持蓝牙连接稳定性
+        Log.d(TAG, "Task playback started, silent audio keeps playing");
+    }
+    
+    /**
+     * 所有任务播放结束时
+     */
+    private void onAllTasksPlaybackStopped() {
+        // 静音音频持续播放，无需恢复
+        Log.d(TAG, "All tasks stopped, silent audio keeps playing");
+    }
 
     private void updateNotificationOrStop() {
         if (taskPlayers.isEmpty()) {
+            // 所有任务播放结束，恢复静音音频
+            onAllTasksPlaybackStopped();
             stopForeground(true);
             stopSelf();
         } else {

@@ -30,6 +30,7 @@ import com.caleb.scheduledplayer.R;
 import com.caleb.scheduledplayer.data.entity.TaskEntity;
 import com.caleb.scheduledplayer.databinding.ActivityMainBinding;
 import com.caleb.scheduledplayer.presentation.ui.music.MusicManagerActivity;
+import com.caleb.scheduledplayer.presentation.ui.settings.SettingsActivity;
 import com.caleb.scheduledplayer.presentation.ui.task.TaskEditActivity;
 import com.caleb.scheduledplayer.presentation.viewmodel.MainViewModel;
 import com.caleb.scheduledplayer.service.player.AudioPlaybackService;
@@ -325,6 +326,10 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         } else if (id == R.id.nav_music) {
             // 跳转到音乐管理
             Intent intent = new Intent(this, MusicManagerActivity.class);
+            startActivity(intent);
+        } else if (id == R.id.nav_settings) {
+            // 跳转到设置页面
+            Intent intent = new Intent(this, SettingsActivity.class);
             startActivity(intent);
         }
 

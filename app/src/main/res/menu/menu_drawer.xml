@@ -11,6 +11,11 @@
             android:id="@+id/nav_music"
             android:icon="@drawable/ic_music_note"
             android:title="音乐管理" />
+
+        <item
+            android:id="@+id/nav_settings"
+            android:icon="@drawable/ic_settings"
+            android:title="@string/settings" />
     </group>
 
 </menu>

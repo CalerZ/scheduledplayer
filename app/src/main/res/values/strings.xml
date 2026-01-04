@@ -67,4 +67,32 @@
     <string name="log_no_files_played">未播放任何文件</string>
     <string name="log_error_reason">失败原因：%s</string>
     <string name="log_duration">执行时长: %s</string>
+    
+    <!-- 设置页面 -->
+    <string name="settings">设置</string>
+    <string name="settings_bluetooth">蓝牙设置</string>
+    <string name="settings_keep_bluetooth_alive">保持蓝牙活跃</string>
+    <string name="settings_keep_bluetooth_alive_desc">在后台播放静音音频，防止蓝牙连接断开</string>
+    <string name="settings_bluetooth_auto_reconnect">蓝牙自动重连</string>
+    <string name="settings_bluetooth_auto_reconnect_desc">蓝牙断开后自动尝试重新连接</string>
+    
+    <!-- 蓝牙通知 -->
+    <string name="bluetooth_disconnected">蓝牙已断开</string>
+    <string name="bluetooth_disconnected_device">设备 \"%s\" 已断开连接</string>
+    <string name="bluetooth_disconnected_audio_switched">音频已切换到手机扬声器</string>
+    <string name="bluetooth_connected">蓝牙已连接</string>
+    <string name="bluetooth_connected_device">设备 \"%s\" 已重新连接</string>
+    
+    <!-- 设置状态 -->
+    <string name="settings_status">运行状态</string>
+    <string name="settings_silent_audio_status">静音音频</string>
+    <string name="settings_bluetooth_status">蓝牙连接</string>
+    <string name="settings_status_unknown">未知</string>
+    <string name="settings_status_playing">播放中</string>
+    <string name="settings_status_paused">已暂停（任务播放中）</string>
+    <string name="settings_status_stopped">已停止</string>
+    <string name="settings_status_disabled">功能已关闭</string>
+    <string name="settings_status_no_bluetooth">未连接蓝牙</string>
+    <string name="settings_bluetooth_connected">已连接: %s</string>
+    <string name="settings_bluetooth_not_connected">未连接</string>
 </resources>

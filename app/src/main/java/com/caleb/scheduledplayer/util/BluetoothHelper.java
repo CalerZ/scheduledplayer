@@ -36,10 +36,30 @@ public class BluetoothHelper {
     private BluetoothConnectionListener listener;
     private BroadcastReceiver bluetoothReceiver;
     private boolean isReceiverRegistered = false;
+    
+    // 记录最后连接的设备
+    private BluetoothDevice lastConnectedDevice;
 
+    /**
+     * 蓝牙连接监听接口
+     */
     public interface BluetoothConnectionListener {
         void onBluetoothAudioConnected();
         void onBluetoothAudioDisconnected();
+        
+        /**
+         * 蓝牙设备断开连接（带设备信息）
+         * @param device 断开的设备，可能为 null
+         * @param deviceName 设备名称
+         */
+        default void onBluetoothDeviceDisconnected(BluetoothDevice device, String deviceName) {}
+        
+        /**
+         * 蓝牙设备连接（带设备信息）
+         * @param device 连接的设备，可能为 null
+         * @param deviceName 设备名称
+         */
+        default void onBluetoothDeviceConnected(BluetoothDevice device, String deviceName) {}
     }
 
     public BluetoothHelper(Context context) {
@@ -148,6 +168,20 @@ public class BluetoothHelper {
 
         return deviceNames;
     }
+    
+    /**
+     * 获取最后连接的蓝牙设备
+     */
+    public BluetoothDevice getLastConnectedDevice() {
+        return lastConnectedDevice;
+    }
+    
+    /**
+     * 获取 BluetoothAdapter
+     */
+    public BluetoothAdapter getBluetoothAdapter() {
+        return bluetoothAdapter;
+    }
 
     /**
      * 开始监听蓝牙连接状态变化
@@ -171,20 +205,21 @@ public class BluetoothHelper {
                     case BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED:
                     case BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED:
                         int state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1);
-                        handleConnectionStateChanged(state);
+                        BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                        handleConnectionStateChanged(state, device);
                         break;
                         
                     case BluetoothAdapter.ACTION_STATE_CHANGED:
                         int adapterState = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
                         if (adapterState == BluetoothAdapter.STATE_OFF) {
-                            notifyDisconnected();
+                            notifyDisconnected(null, "蓝牙已关闭");
                         }
                         break;
                         
                     case AudioManager.ACTION_AUDIO_BECOMING_NOISY:
                         // 音频设备断开（如蓝牙耳机断开）
                         if (!isBluetoothAudioConnected()) {
-                            notifyDisconnected();
+                            notifyDisconnected(lastConnectedDevice, getDeviceName(lastConnectedDevice));
                         }
                         break;
                 }
@@ -223,29 +258,52 @@ public class BluetoothHelper {
         Log.d(TAG, "Stopped listening for bluetooth changes");
     }
 
-    private void handleConnectionStateChanged(int state) {
+    private void handleConnectionStateChanged(int state, BluetoothDevice device) {
+        String deviceName = getDeviceName(device);
+        
         switch (state) {
             case BluetoothProfile.STATE_CONNECTED:
-                notifyConnected();
+                lastConnectedDevice = device;
+                notifyConnected(device, deviceName);
                 break;
             case BluetoothProfile.STATE_DISCONNECTED:
                 // 再次检查是否还有其他蓝牙音频设备连接
                 if (!isBluetoothAudioConnected()) {
-                    notifyDisconnected();
+                    notifyDisconnected(device, deviceName);
                 }
                 break;
         }
     }
-
-    private void notifyConnected() {
-        if (listener != null) {
-            listener.onBluetoothAudioConnected();
+    
+    private String getDeviceName(BluetoothDevice device) {
+        if (device == null) {
+            return "未知设备";
+        }
+        
+        if (!hasBluetoothPermission()) {
+            return "蓝牙设备";
+        }
+        
+        try {
+            String name = device.getName();
+            return name != null && !name.isEmpty() ? name : device.getAddress();
+        } catch (SecurityException e) {
+            Log.e(TAG, "Security exception getting device name", e);
+            return "蓝牙设备";
         }
     }
 
-    private void notifyDisconnected() {
+    private void notifyConnected(BluetoothDevice device, String deviceName) {
+        if (listener != null) {
+            listener.onBluetoothAudioConnected();
+            listener.onBluetoothDeviceConnected(device, deviceName);
+        }
+    }
+
+    private void notifyDisconnected(BluetoothDevice device, String deviceName) {
         if (listener != null) {
             listener.onBluetoothAudioDisconnected();
+            listener.onBluetoothDeviceDisconnected(device, deviceName);
         }
     }
 }
