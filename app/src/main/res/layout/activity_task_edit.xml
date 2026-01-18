@@ -281,6 +281,51 @@
 
                 </LinearLayout>
 
+                <!-- 音量设置 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_md"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="@dimen/spacing_sm">
+
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@drawable/ic_volume"
+                        app:tint="@color/primary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/spacing_sm"
+                        android:text="音量"
+                        android:textColor="@color/on_surface"
+                        android:textSize="@dimen/text_size_sm" />
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderVolume"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginHorizontal="@dimen/spacing_sm"
+                        android:valueFrom="0"
+                        android:valueTo="100"
+                        android:value="100"
+                        android:stepSize="1" />
+
+                    <TextView
+                        android:id="@+id/textVolumeValue"
+                        android:layout_width="40dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="end"
+                        android:text="100%"
+                        android:textColor="@color/on_surface"
+                        android:textSize="@dimen/text_size_sm" />
+
+                </LinearLayout>
+
                 <!-- 音乐列表区域 -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"

@@ -10,7 +10,7 @@ import com.caleb.scheduledplayer.ScheduledPlayerApp;
 import com.caleb.scheduledplayer.data.dao.TaskDao;
 import com.caleb.scheduledplayer.data.entity.TaskEntity;
 import com.caleb.scheduledplayer.service.player.AudioPlaybackService;
-import com.caleb.scheduledplayer.service.scheduler.TaskSchedulerService;
+import com.caleb.scheduledplayer.service.scheduler.TaskScheduleManager;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -24,14 +24,14 @@ public class MainViewModel extends AndroidViewModel {
     private final TaskDao taskDao;
     private final LiveData<List<TaskEntity>> tasks;
     private final ExecutorService executor;
-    private final TaskSchedulerService schedulerService;
+    private final TaskScheduleManager scheduleManager;
 
     public MainViewModel(@NonNull Application application) {
         super(application);
         taskDao = ((ScheduledPlayerApp) application).getDatabase().taskDao();
         tasks = taskDao.getAllTasks();
         executor = Executors.newSingleThreadExecutor();
-        schedulerService = new TaskSchedulerService(application);
+        scheduleManager = TaskScheduleManager.getInstance(application);
     }
 
     /**
@@ -46,15 +46,16 @@ public class MainViewModel extends AndroidViewModel {
      */
     public void updateTaskEnabled(long taskId, boolean enabled) {
         executor.execute(() -> {
-            taskDao.updateEnabled(taskId, enabled, System.currentTimeMillis());
+            // 使用新接口：启用时重置执行状态
+            taskDao.updateEnabledAndResetState(taskId, enabled, System.currentTimeMillis());
             
             // 更新闹钟调度
             TaskEntity task = taskDao.getTaskByIdSync(taskId);
             if (task != null) {
                 if (enabled) {
-                    schedulerService.scheduleTask(task);
+                    scheduleManager.scheduleTask(task);
                 } else {
-                    schedulerService.cancelTask(taskId);
+                    scheduleManager.cancelTask(taskId);
                     // 停止正在播放的音乐
                     AudioPlaybackService.stopTaskPlayback(getApplication(), taskId);
                 }
@@ -68,7 +69,7 @@ public class MainViewModel extends AndroidViewModel {
     public void deleteTask(TaskEntity task) {
         executor.execute(() -> {
             // 先取消调度
-            schedulerService.cancelTask(task.getId());
+            scheduleManager.cancelTask(task.getId());
             // 停止正在播放的音乐
             AudioPlaybackService.stopTaskPlayback(getApplication(), task.getId());
             // 再删除任务
@@ -82,7 +83,7 @@ public class MainViewModel extends AndroidViewModel {
     public void deleteTaskById(long taskId) {
         executor.execute(() -> {
             // 先取消调度
-            schedulerService.cancelTask(taskId);
+            scheduleManager.cancelTask(taskId);
             // 停止正在播放的音乐
             AudioPlaybackService.stopTaskPlayback(getApplication(), taskId);
             // 再删除任务

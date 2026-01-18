@@ -3,7 +3,10 @@ package com.caleb.scheduledplayer.service.scheduler;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.util.Log;
+import com.caleb.scheduledplayer.util.AppLogger;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 开机广播接收器
@@ -12,6 +15,9 @@ import android.util.Log;
 public class BootReceiver extends BroadcastReceiver {
 
     private static final String TAG = "BootReceiver";
+    
+    // 使用单独的线程执行数据库操作，避免ANR
+    private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -27,11 +33,24 @@ public class BootReceiver extends BroadcastReceiver {
             "android.intent.action.QUICKBOOT_POWERON".equals(action) ||
             "com.htc.intent.action.QUICKBOOT_POWERON".equals(action)) {
             
-            Log.d(TAG, "Boot completed, rescheduling tasks");
+            AppLogger.d(TAG, "Boot completed, rescheduling tasks via TaskScheduleManager");
             
-            // 重新调度所有启用的任务
-            TaskSchedulerService scheduler = new TaskSchedulerService(context);
-            scheduler.rescheduleAllTasks();
+            // 获取 PendingResult 以便在异步完成后通知系统
+            final PendingResult pendingResult = goAsync();
+            final Context appContext = context.getApplicationContext();
+            
+            // 在后台线程执行数据库操作，避免ANR
+            executor.execute(() -> {
+                try {
+                    TaskScheduleManager.getInstance(appContext).rescheduleAllTasks();
+                    AppLogger.d(TAG, "Tasks rescheduled successfully after boot");
+                } catch (Exception e) {
+                    AppLogger.e(TAG, "Error rescheduling tasks after boot", e);
+                } finally {
+                    // 通知系统广播处理完成
+                    pendingResult.finish();
+                }
+            });
         }
     }
 }

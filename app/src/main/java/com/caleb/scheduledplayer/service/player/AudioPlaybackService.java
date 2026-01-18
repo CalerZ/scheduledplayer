@@ -16,9 +16,10 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.util.Log;
 
 import android.bluetooth.BluetoothDevice;
+
+import com.caleb.scheduledplayer.util.AppLogger;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -30,11 +31,14 @@ import com.caleb.scheduledplayer.data.database.AppDatabase;
 import com.caleb.scheduledplayer.data.entity.TaskEntity;
 import com.caleb.scheduledplayer.data.repository.TaskLogRepository;
 import com.caleb.scheduledplayer.presentation.ui.main.MainActivity;
+import com.caleb.scheduledplayer.service.scheduler.TaskSchedulerService;
 import com.caleb.scheduledplayer.util.AudioFileValidator;
 import com.caleb.scheduledplayer.util.BluetoothHelper;
 import com.caleb.scheduledplayer.util.BluetoothReconnectManager;
 import com.caleb.scheduledplayer.util.AppSettings;
 import com.caleb.scheduledplayer.util.LogErrorType;
+
+import android.content.SharedPreferences;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -42,8 +46,11 @@ import java.security.Permission;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -56,6 +63,14 @@ public class AudioPlaybackService extends Service {
     private static final String TAG = "AudioPlaybackService";
     private static final int NOTIFICATION_ID = 1;
     private static final int BLUETOOTH_NOTIFICATION_ID = 2;
+    
+    // 静态变量：跟踪 Service 是否正在运行
+    // 用于判断是否需要在 handleReboot 时恢复播放
+    private static volatile boolean isServiceRunning = false;
+    
+    // 静态变量：跟踪正在播放的任务ID
+    // 用于外部检查特定任务是否正在播放
+    private static final Set<Long> playingTaskIds = Collections.synchronizedSet(new HashSet<>());
 
     // Intent Actions
     public static final String ACTION_START_TASK = "com.caleb.scheduledplayer.START_TASK";
@@ -64,12 +79,15 @@ public class AudioPlaybackService extends Service {
     public static final String EXTRA_TASK_ID = "task_id";
 
     private final IBinder binder = new LocalBinder();
-    private final Map<Long, TaskPlayer> taskPlayers = new HashMap<>();
-    private final Map<Long, Long> taskLogIds = new HashMap<>();  // 任务ID -> 日志ID映射
-    private final Map<Long, Integer> taskOutputDevices = new HashMap<>();  // 任务ID -> 输出设备映射
+    private final Map<Long, TaskPlayer> taskPlayers = new ConcurrentHashMap<>();
+    private final Map<Long, Long> taskLogIds = new ConcurrentHashMap<>();  // 任务ID -> 日志ID映射
+    private final Map<Long, Integer> taskOutputDevices = new ConcurrentHashMap<>();  // 任务ID -> 输出设备映射
+    private final List<Long> bluetoothPausedTasks = new ArrayList<>();  // 因蓝牙断开而暂停的任务
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private ExecutorService executorService;
     private PowerManager.WakeLock wakeLock;
+    private static final long WAKELOCK_REFRESH_INTERVAL = 30 * 60 * 1000L; // 30分钟刷新一次
+    private final Runnable wakeLockRefreshRunnable = this::refreshWakeLock;
     private AudioManager audioManager;
     private AudioFocusRequest audioFocusRequest;
     private boolean hasAudioFocus = false;
@@ -80,6 +98,14 @@ public class AudioPlaybackService extends Service {
     private AppSettings appSettings;
     private SilentAudioPlayer silentAudioPlayer;
     private BluetoothReconnectManager reconnectManager;
+    
+    // 播放状态持久化相关
+    private static final String PREFS_NAME = "playback_state";
+    private static final String KEY_PLAYING_TASK_IDS = "playing_task_ids";
+    private static final String KEY_TASK_CURRENT_INDEX = "task_%d_current_index";
+    private static final String KEY_TASK_CURRENT_POSITION = "task_%d_current_position";
+    private static final String KEY_TASK_PLAYLIST = "task_%d_playlist";
+    private SharedPreferences playbackPrefs;
 
     private PlaybackCallback playbackCallback;
 
@@ -145,11 +171,13 @@ public class AudioPlaybackService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.d(TAG, "onCreate: Service created, pid=" + android.os.Process.myPid());
-        executorService = Executors.newCachedThreadPool();
+        isServiceRunning = true;  // 标记 Service 正在运行
+        AppLogger.getInstance().d(TAG, "onCreate: Service created, pid=" + android.os.Process.myPid() + ", isServiceRunning=true");
+        executorService = Executors.newFixedThreadPool(4);  // 限制线程数量，避免线程爆炸
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         logRepository = new TaskLogRepository(getApplication());
         bluetoothHelper = new BluetoothHelper(this);
+        playbackPrefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         acquireWakeLock();
         
         // 初始化设置和蓝牙保持组件
@@ -161,25 +189,25 @@ public class AudioPlaybackService extends Service {
         bluetoothHelper.startListening(new BluetoothHelper.BluetoothConnectionListener() {
             @Override
             public void onBluetoothAudioConnected() {
-                Log.d(TAG, "Bluetooth audio connected");
+                AppLogger.getInstance().d(TAG, "Bluetooth audio connected");
             }
 
             @Override
             public void onBluetoothAudioDisconnected() {
-                Log.d(TAG, "Bluetooth audio disconnected");
+                AppLogger.getInstance().d(TAG, "Bluetooth audio disconnected");
                 // 停止所有需要蓝牙的任务
                 mainHandler.post(() -> stopBluetoothOnlyTasks());
             }
             
             @Override
             public void onBluetoothDeviceDisconnected(BluetoothDevice device, String deviceName) {
-                Log.d(TAG, "Bluetooth device disconnected: " + deviceName);
+                AppLogger.getInstance().d(TAG, "Bluetooth device disconnected: " + deviceName);
                 mainHandler.post(() -> handleBluetoothDisconnected(device, deviceName));
             }
             
             @Override
             public void onBluetoothDeviceConnected(BluetoothDevice device, String deviceName) {
-                Log.d(TAG, "Bluetooth device connected: " + deviceName);
+                AppLogger.getInstance().d(TAG, "Bluetooth device connected: " + deviceName);
                 mainHandler.post(() -> handleBluetoothConnected(device, deviceName));
             }
         });
@@ -192,7 +220,7 @@ public class AudioPlaybackService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : "null";
         long intentTaskId = intent != null ? intent.getLongExtra(EXTRA_TASK_ID, -1) : -1;
-        Log.d(TAG, "onStartCommand: flags=" + flags + ", startId=" + startId + 
+        AppLogger.getInstance().d(TAG, "onStartCommand: flags=" + flags + ", startId=" + startId + 
               ", action=" + action + ", taskId=" + intentTaskId);
         // 立即启动前台服务，避免 ANR
         startForeground(NOTIFICATION_ID, createNotification());
@@ -231,7 +259,9 @@ public class AudioPlaybackService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        Log.d(TAG, "onDestroy called, taskPlayers count: " + taskPlayers.size());
+        isServiceRunning = false;  // 标记 Service 不再运行
+        playingTaskIds.clear();    // 清空正在播放的任务集合
+        AppLogger.getInstance().d(TAG, "onDestroy called, taskPlayers count: " + taskPlayers.size() + ", isServiceRunning=false");
         stopAllTasks();
         releaseWakeLock();
         abandonAudioFocus();
@@ -252,10 +282,10 @@ public class AudioPlaybackService extends Service {
     
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        Log.d(TAG, "onTaskRemoved: app removed from recent tasks");
+        AppLogger.getInstance().d(TAG, "onTaskRemoved: app removed from recent tasks");
         // 当应用从最近任务列表移除时，重新启动服务以保持播放
         if (!taskPlayers.isEmpty()) {
-            Log.d(TAG, "Restarting service to continue playback");
+            AppLogger.getInstance().d(TAG, "Restarting service to continue playback");
             Intent restartIntent = new Intent(this, AudioPlaybackService.class);
             restartIntent.setAction(ACTION_START_TASK);
             // 重新启动第一个正在播放的任务
@@ -290,6 +320,7 @@ public class AudioPlaybackService extends Service {
     public void stopTask(long taskId) {
         TaskPlayer player = taskPlayers.remove(taskId);
         taskOutputDevices.remove(taskId);
+        playingTaskIds.remove(taskId);  // 从正在播放的任务集合移除
         if (player != null) {
             // 更新日志为成功状态
             Long logId = taskLogIds.remove(taskId);
@@ -323,6 +354,7 @@ public class AudioPlaybackService extends Service {
         }
         taskPlayers.clear();
         taskOutputDevices.clear();
+        playingTaskIds.clear();  // 清空正在播放的任务集合
         stopForeground(true);
         stopSelf();
     }
@@ -349,10 +381,12 @@ public class AudioPlaybackService extends Service {
     }
 
     private void startTaskPlayback(TaskEntity task) {
+        AppLogger.getInstance().d(TAG, "startTaskPlayback called for task " + task.getId() + " [" + task.getName() + "]");
+        
         // 检查蓝牙播放模式
         if (task.getOutputDevice() == TaskEntity.OUTPUT_DEVICE_BLUETOOTH) {
             if (!bluetoothHelper.isBluetoothAudioConnected()) {
-                Log.w(TAG, "Task " + task.getId() + " requires bluetooth but no bluetooth audio connected");
+                AppLogger.getInstance().w(TAG, "Task " + task.getId() + " requires bluetooth but no bluetooth audio connected");
                 // 记录失败日志
                 executorService.execute(() -> {
                     long logId = logRepository.createLog(task.getId());
@@ -362,23 +396,53 @@ public class AudioPlaybackService extends Service {
             }
         }
         
-        // 如果任务已在播放，检查音频列表是否变化
-        if (taskPlayers.containsKey(task.getId())) {
+        // 检查是否已经在播放（防止进程重启后重复启动）
+        // 注意：playingTaskIds 在进程重启后会清空，所以也要检查 taskPlayers
+        if (playingTaskIds.contains(task.getId())) {
+            // 已经标记为正在播放，检查是否真的在播放
+            if (taskPlayers.containsKey(task.getId())) {
+                TaskPlayer existingPlayer = taskPlayers.get(task.getId());
+                List<String> newAudioPaths = Converters.parseAudioPaths(task.getAudioPaths());
+                
+                // 如果音频列表没变，继续播放，不重启
+                if (existingPlayer != null && existingPlayer.isSamePlaylist(newAudioPaths)) {
+                    AppLogger.getInstance().d(TAG, "Task " + task.getId() + " is already playing with same playlist, skipping restart");
+                    return;
+                }
+                
+                // 音频列表变了，停止当前播放（但不触发服务停止）
+                TaskPlayer player = taskPlayers.remove(task.getId());
+                playingTaskIds.remove(task.getId());
+                if (player != null) {
+                    player.stopWithoutCallback();
+                }
+            } else {
+                // playingTaskIds 中有但 taskPlayers 中没有，说明正在启动过程中
+                // 这是进程重启后收到重复 Intent 的情况，直接跳过
+                AppLogger.getInstance().d(TAG, "Task " + task.getId() + " is being started, skipping duplicate request");
+                return;
+            }
+        } else if (taskPlayers.containsKey(task.getId())) {
+            // taskPlayers 中有但 playingTaskIds 中没有（理论上不应该发生，但为了安全处理）
             TaskPlayer existingPlayer = taskPlayers.get(task.getId());
             List<String> newAudioPaths = Converters.parseAudioPaths(task.getAudioPaths());
             
-            // 如果音频列表没变，继续播放，不重启
             if (existingPlayer != null && existingPlayer.isSamePlaylist(newAudioPaths)) {
-                Log.d(TAG, "Task " + task.getId() + " is already playing with same playlist, skipping restart");
+                AppLogger.getInstance().d(TAG, "Task " + task.getId() + " is already playing (taskPlayers), adding to playingTaskIds and skipping restart");
+                playingTaskIds.add(task.getId());
                 return;
             }
             
-            // 音频列表变了，停止当前播放（但不触发服务停止）
             TaskPlayer player = taskPlayers.remove(task.getId());
             if (player != null) {
                 player.stopWithoutCallback();
             }
         }
+        
+        // 立即标记任务为"正在启动"，防止进程重启后收到重复 Intent 时重复启动
+        // 这必须在任何可能返回之前执行
+        playingTaskIds.add(task.getId());
+        AppLogger.getInstance().d(TAG, "Marked task " + task.getId() + " as starting, playingTaskIds size: " + playingTaskIds.size());
 
         // 请求音频焦点
         if (!hasAudioFocus) {
@@ -388,12 +452,17 @@ public class AudioPlaybackService extends Service {
         // 解析音频路径
         List<String> audioPaths = Converters.parseAudioPaths(task.getAudioPaths());
         if (audioPaths.isEmpty()) {
-            Log.w(TAG, "Task " + task.getId() + " has no audio files");
+            AppLogger.getInstance().w(TAG, "Task " + task.getId() + " has no audio files, will retry in 5 minutes");
+            // 移除标记，因为任务启动失败
+            playingTaskIds.remove(task.getId());
             // 记录失败日志
             executorService.execute(() -> {
                 long logId = logRepository.createLog(task.getId());
                 logRepository.updateLogFailed(logId, LogErrorType.FILE_MISSING, "没有可播放的音频文件");
             });
+            // 延迟 5 分钟重试（可能是存储还未挂载或文件暂时不可用）
+            final long taskId = task.getId();
+            mainHandler.postDelayed(() -> startTask(taskId), 5 * 60 * 1000L);
             return;
         }
 
@@ -408,9 +477,43 @@ public class AudioPlaybackService extends Service {
         // 记录任务的输出设备设置
         taskOutputDevices.put(task.getId(), task.getOutputDevice());
 
+        // 检查是否有保存的播放状态（崩溃恢复场景）
+        int[] savedState = null;
+        List<String> savedPlaylist = null;
+        if (hasSavedPlaybackState(task.getId())) {
+            savedState = getSavedPlaybackState(task.getId());
+            savedPlaylist = getSavedPlaylist(task.getId());
+            // 验证保存的播放列表是否与当前一致
+            if (savedPlaylist != null && !savedPlaylist.isEmpty()) {
+                // 检查播放列表是否相同（忽略顺序）
+                boolean samePlaylist = savedPlaylist.size() == audioPaths.size() 
+                        && savedPlaylist.containsAll(audioPaths) 
+                        && audioPaths.containsAll(savedPlaylist);
+                if (samePlaylist) {
+                    AppLogger.getInstance().d(TAG, "Recovering from crash for task " + task.getId() + 
+                          ": index=" + savedState[0] + ", position=" + savedState[1]);
+                } else {
+                    AppLogger.getInstance().d(TAG, "Playlist changed for task " + task.getId() + ", starting from beginning");
+                    savedState = null;
+                    savedPlaylist = null;
+                    clearTaskPlaybackState(task.getId());
+                }
+            } else {
+                savedState = null;
+            }
+        }
+
         // 创建任务播放器
-        TaskPlayer player = new TaskPlayer(task, audioPaths);
+        TaskPlayer player;
+        if (savedState != null && savedPlaylist != null) {
+            // 崩溃恢复：使用保存的播放列表和位置
+            player = new TaskPlayer(task, savedPlaylist, savedState[0], savedState[1]);
+        } else {
+            // 正常启动：从头开始
+            player = new TaskPlayer(task, audioPaths);
+        }
         taskPlayers.put(task.getId(), player);
+        // playingTaskIds 已在前面添加，此处不需要重复添加
         player.start();
         
         // 暂停静音音频
@@ -438,18 +541,55 @@ public class AudioPlaybackService extends Service {
             }
         }
         
+        // 清空并重新记录因蓝牙断开而停止的任务
+        bluetoothPausedTasks.clear();
+        
         for (Long taskId : tasksToStop) {
-            Log.d(TAG, "Stopping bluetooth-only task " + taskId + " due to bluetooth disconnection");
+            AppLogger.getInstance().d(TAG, "Stopping bluetooth-only task " + taskId + " due to bluetooth disconnection");
+            
+            // 记录被暂停的任务，以便蓝牙重连后恢复
+            bluetoothPausedTasks.add(taskId);
             
             // 记录日志
             Long logId = taskLogIds.get(taskId);
             if (logId != null) {
                 executorService.execute(() -> {
-                    logRepository.updateLogFailed(logId, LogErrorType.BLUETOOTH_DISCONNECTED, "蓝牙音频设备断开连接");
+                    logRepository.updateLogFailed(logId, LogErrorType.BLUETOOTH_DISCONNECTED, "蓝牙音频设备断开连接，等待重连");
                 });
             }
             
             stopTask(taskId);
+        }
+        
+        AppLogger.getInstance().d(TAG, "Recorded " + bluetoothPausedTasks.size() + " tasks to resume when bluetooth reconnects");
+    }
+    
+    /**
+     * 恢复因蓝牙断开而停止的任务
+     */
+    private void resumeBluetoothPausedTasks() {
+        if (bluetoothPausedTasks.isEmpty()) {
+            AppLogger.getInstance().d(TAG, "No bluetooth-paused tasks to resume");
+            return;
+        }
+        
+        AppLogger.getInstance().d(TAG, "Resuming " + bluetoothPausedTasks.size() + " bluetooth-paused tasks");
+        
+        // 复制列表，避免并发修改
+        List<Long> tasksToResume = new ArrayList<>(bluetoothPausedTasks);
+        bluetoothPausedTasks.clear();
+        
+        for (Long taskId : tasksToResume) {
+            // 检查任务是否仍应活跃
+            executorService.execute(() -> {
+                TaskEntity task = AppDatabase.getInstance(this).taskDao().getTaskByIdSync(taskId);
+                if (task != null && task.isEnabled() && TaskSchedulerService.shouldTaskBeActiveNow(task)) {
+                    AppLogger.getInstance().d(TAG, "Resuming bluetooth task " + taskId);
+                    mainHandler.post(() -> startTask(taskId));
+                } else {
+                    AppLogger.getInstance().d(TAG, "Task " + taskId + " no longer needs to be active, not resuming");
+                }
+            });
         }
     }
     
@@ -462,7 +602,7 @@ public class AudioPlaybackService extends Service {
         if (appSettings.isKeepBluetoothAlive() && bluetoothHelper.isBluetoothAudioConnected()) {
             // 始终启动静音播放（不受任务播放状态影响）
             silentAudioPlayer.start();
-            Log.d(TAG, "Started silent audio for bluetooth keep-alive");
+            AppLogger.getInstance().d(TAG, "Started silent audio for bluetooth keep-alive");
         }
     }
     
@@ -483,17 +623,17 @@ public class AudioPlaybackService extends Service {
             reconnectManager.startReconnect(new BluetoothReconnectManager.ReconnectCallback() {
                 @Override
                 public void onReconnectSuccess() {
-                    Log.d(TAG, "Bluetooth reconnect successful");
+                    AppLogger.getInstance().d(TAG, "Bluetooth reconnect successful");
                 }
                 
                 @Override
                 public void onReconnectFailed(String reason) {
-                    Log.d(TAG, "Bluetooth reconnect failed: " + reason);
+                    AppLogger.getInstance().d(TAG, "Bluetooth reconnect failed: " + reason);
                 }
                 
                 @Override
                 public void onReconnectAttempt(int attempt, int maxAttempts) {
-                    Log.d(TAG, "Bluetooth reconnect attempt " + attempt + "/" + maxAttempts);
+                    AppLogger.getInstance().d(TAG, "Bluetooth reconnect attempt " + attempt + "/" + maxAttempts);
                 }
             });
         }
@@ -512,8 +652,11 @@ public class AudioPlaybackService extends Service {
         // 3. 恢复静音播放（始终启动，不受任务播放状态影响）
         if (appSettings.isKeepBluetoothAlive()) {
             silentAudioPlayer.start();
-            Log.d(TAG, "Resumed silent audio after bluetooth reconnect");
+            AppLogger.getInstance().d(TAG, "Resumed silent audio after bluetooth reconnect");
         }
+        
+        // 4. 恢复因蓝牙断开而停止的任务
+        resumeBluetoothPausedTasks();
     }
     
     /**
@@ -570,7 +713,7 @@ public class AudioPlaybackService extends Service {
      * 设置变更回调（从 SettingsActivity 调用）
      */
     public void onSettingsChanged() {
-        Log.d(TAG, "Settings changed, updating bluetooth keep-alive state");
+        AppLogger.getInstance().d(TAG, "Settings changed, updating bluetooth keep-alive state");
         
         if (appSettings.isKeepBluetoothAlive()) {
             // 开启保持蓝牙活跃（始终启动，不受任务播放状态影响）
@@ -588,7 +731,7 @@ public class AudioPlaybackService extends Service {
      */
     private void onTaskPlaybackStarted() {
         // 静音音频持续播放，不暂停，以保持蓝牙连接稳定性
-        Log.d(TAG, "Task playback started, silent audio keeps playing");
+        AppLogger.getInstance().d(TAG, "Task playback started, silent audio keeps playing");
     }
     
     /**
@@ -596,7 +739,7 @@ public class AudioPlaybackService extends Service {
      */
     private void onAllTasksPlaybackStopped() {
         // 静音音频持续播放，无需恢复
-        Log.d(TAG, "All tasks stopped, silent audio keeps playing");
+        AppLogger.getInstance().d(TAG, "All tasks stopped, silent audio keeps playing");
     }
 
     private void updateNotificationOrStop() {
@@ -648,15 +791,42 @@ public class AudioPlaybackService extends Service {
                     PowerManager.PARTIAL_WAKE_LOCK,
                     "ScheduledPlayer:PlaybackWakeLock"
             );
-            wakeLock.acquire(10 * 60 * 60 * 1000L); // 10 小时
+        }
+        // 每次获取 1 小时，定期刷新避免超时
+        if (!wakeLock.isHeld()) {
+            wakeLock.acquire(60 * 60 * 1000L);
+            AppLogger.getInstance().d(TAG, "WakeLock acquired for 1 hour");
+        }
+        // 设置定期刷新
+        mainHandler.removeCallbacks(wakeLockRefreshRunnable);
+        mainHandler.postDelayed(wakeLockRefreshRunnable, WAKELOCK_REFRESH_INTERVAL);
+    }
+    
+    /**
+     * 刷新 WakeLock，防止超时释放
+     */
+    private void refreshWakeLock() {
+        if (!taskPlayers.isEmpty()) {
+            // 还有任务在播放，重新获取 WakeLock
+            if (wakeLock != null) {
+                if (wakeLock.isHeld()) {
+                    wakeLock.release();
+                }
+                wakeLock.acquire(60 * 60 * 1000L);
+                AppLogger.getInstance().d(TAG, "WakeLock refreshed for another hour");
+            }
+            // 继续定期刷新
+            mainHandler.postDelayed(wakeLockRefreshRunnable, WAKELOCK_REFRESH_INTERVAL);
         }
     }
 
     private void releaseWakeLock() {
+        mainHandler.removeCallbacks(wakeLockRefreshRunnable);
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
-            wakeLock = null;
+            AppLogger.getInstance().d(TAG, "WakeLock released");
         }
+        wakeLock = null;
     }
 
     private void requestAudioFocus() {
@@ -700,21 +870,42 @@ public class AudioPlaybackService extends Service {
      * 管理单个任务的音频播放
      */
     private class TaskPlayer implements MediaPlayer.OnCompletionListener, MediaPlayer.OnErrorListener {
+        private static final int MAX_CONSECUTIVE_ERRORS = 10;  // 最大连续错误次数
+        private static final int STATE_SAVE_INTERVAL = 5000;  // 保存状态间隔（毫秒）
+        
         private final TaskEntity task;
         private final List<String> playlist;
         private final List<String> playedFiles = new ArrayList<>();  // 已播放的文件列表
         private MediaPlayer mediaPlayer;
         private int currentIndex = 0;
+        private int resumePosition = 0;  // 恢复播放的位置
         private boolean isPlaying = false;
         private boolean isPaused = false;
+        private int consecutiveErrors = 0;  // 连续错误计数器
+        private final Runnable stateSaveRunnable = this::saveCurrentState;
 
         TaskPlayer(TaskEntity task, List<String> audioPaths) {
+            this(task, audioPaths, 0, 0);
+        }
+        
+        /**
+         * 构造函数（支持从指定位置恢复）
+         */
+        TaskPlayer(TaskEntity task, List<String> audioPaths, int startIndex, int startPosition) {
             this.task = task;
             this.playlist = new ArrayList<>(audioPaths);
+            this.currentIndex = startIndex;
+            this.resumePosition = startPosition;
 
-            // 如果是随机模式，打乱播放列表
-            if (task.getPlayMode() == TaskEntity.PLAY_MODE_RANDOM) {
+            // 如果是随机模式且没有保存的状态，打乱播放列表
+            if (task.getPlayMode() == TaskEntity.PLAY_MODE_RANDOM && startIndex == 0 && startPosition == 0) {
                 Collections.shuffle(this.playlist);
+            }
+            
+            // 验证起始索引
+            if (this.currentIndex >= this.playlist.size()) {
+                this.currentIndex = 0;
+                this.resumePosition = 0;
             }
         }
 
@@ -722,11 +913,17 @@ public class AudioPlaybackService extends Service {
             isPlaying = true;
             isPaused = false;
             playCurrentTrack();
+            // 启动定期保存状态
+            scheduleStateSave();
         }
 
         void stop() {
             isPlaying = false;
             isPaused = false;
+            // 停止定期保存
+            mainHandler.removeCallbacks(stateSaveRunnable);
+            // 清除保存的状态
+            clearTaskPlaybackState(task.getId());
             releaseMediaPlayer();
             if (playbackCallback != null) {
                 playbackCallback.onTaskStopped(task.getId());
@@ -737,6 +934,8 @@ public class AudioPlaybackService extends Service {
             if (mediaPlayer != null && isActuallyPlaying()) {
                 mediaPlayer.pause();
                 isPaused = true;
+                // 暂停时保存状态
+                saveCurrentState();
             }
         }
         
@@ -784,18 +983,51 @@ public class AudioPlaybackService extends Service {
         void stopWithoutCallback() {
             isPlaying = false;
             isPaused = false;
+            mainHandler.removeCallbacks(stateSaveRunnable);
+            clearTaskPlaybackState(task.getId());
             releaseMediaPlayer();
+        }
+        
+        /**
+         * 定期保存播放状态
+         */
+        private void scheduleStateSave() {
+            mainHandler.removeCallbacks(stateSaveRunnable);
+            if (isPlaying) {
+                mainHandler.postDelayed(stateSaveRunnable, STATE_SAVE_INTERVAL);
+            }
+        }
+        
+        /**
+         * 保存当前播放状态
+         */
+        private void saveCurrentState() {
+            if (isPlaying && !playlist.isEmpty()) {
+                int position = getCurrentPosition();
+                saveTaskPlaybackState(task.getId(), currentIndex, position, playlist);
+                // 继续定期保存
+                scheduleStateSave();
+            }
         }
 
         /**
          * 检查播放列表是否相同
          */
         boolean isSamePlaylist(List<String> otherPaths) {
-            if (otherPaths == null || otherPaths.size() != playlist.size()) {
+            if (otherPaths == null) {
+                AppLogger.getInstance().d(TAG, "isSamePlaylist: otherPaths is null");
+                return false;
+            }
+            if (otherPaths.size() != playlist.size()) {
+                AppLogger.getInstance().d(TAG, "isSamePlaylist: size mismatch - playlist=" + playlist.size() + ", other=" + otherPaths.size());
                 return false;
             }
             // 比较内容（忽略顺序，因为可能是随机模式）
-            return playlist.containsAll(otherPaths) && otherPaths.containsAll(playlist);
+            boolean result = playlist.containsAll(otherPaths) && otherPaths.containsAll(playlist);
+            if (!result) {
+                AppLogger.getInstance().d(TAG, "isSamePlaylist: content mismatch - playlist=" + playlist + ", other=" + otherPaths);
+            }
+            return result;
         }
 
         /**
@@ -806,15 +1038,26 @@ public class AudioPlaybackService extends Service {
         }
 
         private void playCurrentTrack() {
-            Log.d(TAG, "playCurrentTrack: isPlaying=" + isPlaying + ", playlistSize=" + playlist.size() + ", currentIndex=" + currentIndex);
+            AppLogger.getInstance().d(TAG, "playCurrentTrack: isPlaying=" + isPlaying + ", playlistSize=" + playlist.size() + ", currentIndex=" + currentIndex + ", resumePosition=" + resumePosition);
             if (!isPlaying || playlist.isEmpty()) {
-                Log.w(TAG, "playCurrentTrack: skipping because isPlaying=" + isPlaying + " or playlist is empty");
+                AppLogger.getInstance().w(TAG, "playCurrentTrack: skipping because isPlaying=" + isPlaying + " or playlist is empty");
+                return;
+            }
+            
+            // 检查连续错误次数，防止无限循环
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                AppLogger.getInstance().e(TAG, "Too many consecutive errors (" + consecutiveErrors + "), stopping task " + task.getId());
+                recordPlaybackError(task.getId(), LogErrorType.PLAYER_ERROR, 
+                        "连续播放失败次数过多，已停止任务");
+                isPlaying = false;
+                mainHandler.post(() -> stopTask(task.getId()));
                 return;
             }
 
             if (currentIndex >= playlist.size()) {
                 // 播放列表结束，循环播放（所有模式都循环，直到任务结束时间）
                 currentIndex = 0;
+                resumePosition = 0;  // 重置恢复位置
                 // 随机模式下，重新洗牌
                 if (task.getPlayMode() == TaskEntity.PLAY_MODE_RANDOM) {
                     Collections.shuffle(playlist);
@@ -822,7 +1065,9 @@ public class AudioPlaybackService extends Service {
             }
 
             String audioPath = playlist.get(currentIndex);
-            Log.d(TAG, "playCurrentTrack: playing " + audioPath);
+            final int seekPosition = resumePosition;  // 保存恢复位置
+            resumePosition = 0;  // 只在第一次播放时使用恢复位置
+            AppLogger.getInstance().d(TAG, "playCurrentTrack: playing " + audioPath + (seekPosition > 0 ? " from position " + seekPosition : ""));
             releaseMediaPlayer();
 
             try {
@@ -842,23 +1087,34 @@ public class AudioPlaybackService extends Service {
                 mediaPlayer.setOnCompletionListener(this);
                 mediaPlayer.setOnErrorListener(this);
                 mediaPlayer.setOnInfoListener((mp, what, extra) -> {
-                    Log.d(TAG, "MediaPlayer onInfo: what=" + what + ", extra=" + extra);
+                    AppLogger.getInstance().d(TAG, "MediaPlayer onInfo: what=" + what + ", extra=" + extra);
                     return false;
                 });
                 mediaPlayer.prepareAsync();
                 mediaPlayer.setOnPreparedListener(mp -> {
-                    Log.d(TAG, "MediaPlayer prepared, isPlaying=" + isPlaying);
+                    AppLogger.getInstance().d(TAG, "MediaPlayer prepared, isPlaying=" + isPlaying);
                     if (isPlaying) {
                         try {
+                            // 如果有恢复位置，先 seek 到指定位置
+                            if (seekPosition > 0) {
+                                mp.seekTo(seekPosition);
+                                AppLogger.getInstance().d(TAG, "MediaPlayer seeking to position: " + seekPosition);
+                            }
                             mp.start();
-                            Log.d(TAG, "MediaPlayer started playing: " + audioPath + 
-                                  ", duration=" + mp.getDuration() + "ms, isActuallyPlaying=" + mp.isPlaying());
+                            AppLogger.getInstance().d(TAG, "MediaPlayer started playing: " + audioPath + 
+                                  ", duration=" + mp.getDuration() + "ms, isActuallyPlaying=" + mp.isPlaying() +
+                                  (seekPosition > 0 ? ", resumed from " + seekPosition + "ms" : ""));
+                            // 播放成功，重置连续错误计数
+                            consecutiveErrors = 0;
                             // 记录已播放的文件
                             playedFiles.add(audioPath);
+                            // 立即保存状态
+                            saveCurrentState();
                             // 通知播放状态变化
                             notifyPlaybackStateChanged();
                         } catch (IllegalStateException e) {
-                            Log.e(TAG, "Failed to start MediaPlayer", e);
+                            AppLogger.getInstance().e(TAG, "Failed to start MediaPlayer", e);
+                            consecutiveErrors++;
                             currentIndex++;
                             playCurrentTrack();
                         }
@@ -866,19 +1122,21 @@ public class AudioPlaybackService extends Service {
                 });
 
             } catch (SecurityException e) {
-                Log.e(TAG, "Permission denied for audio: " + audioPath, e);
+                AppLogger.getInstance().e(TAG, "Permission denied for audio: " + audioPath, e);
                 // 记录权限错误到日志
                 recordPlaybackError(task.getId(), LogErrorType.PERMISSION_DENIED, 
                         "权限被拒绝: " + getFileName(audioPath));
                 // 跳到下一首
+                consecutiveErrors++;
                 currentIndex++;
                 playCurrentTrack();
             } catch (IOException e) {
-                Log.e(TAG, "Error playing audio: " + audioPath, e);
+                AppLogger.getInstance().e(TAG, "Error playing audio: " + audioPath, e);
                 // 记录文件缺失错误
                 recordPlaybackError(task.getId(), LogErrorType.FILE_MISSING, 
                         "文件不存在: " + getFileName(audioPath));
                 // 跳到下一首
+                consecutiveErrors++;
                 currentIndex++;
                 playCurrentTrack();
             }
@@ -892,7 +1150,7 @@ public class AudioPlaybackService extends Service {
                     }
                     mediaPlayer.release();
                 } catch (Exception e) {
-                    Log.e(TAG, "Error releasing MediaPlayer", e);
+                    AppLogger.getInstance().e(TAG, "Error releasing MediaPlayer", e);
                 }
                 mediaPlayer = null;
             }
@@ -900,17 +1158,20 @@ public class AudioPlaybackService extends Service {
 
         @Override
         public void onCompletion(MediaPlayer mp) {
-            Log.d(TAG, "onCompletion: track finished, currentIndex=" + currentIndex);
+            AppLogger.getInstance().d(TAG, "onCompletion: track finished, currentIndex=" + currentIndex);
+            // 播放成功完成，重置连续错误计数
+            consecutiveErrors = 0;
             currentIndex++;
             playCurrentTrack();
         }
 
         @Override
         public boolean onError(MediaPlayer mp, int what, int extra) {
-            Log.e(TAG, "MediaPlayer error: what=" + what + ", extra=" + extra);
+            AppLogger.getInstance().e(TAG, "MediaPlayer error: what=" + what + ", extra=" + extra);
             // 记录播放器错误
             recordPlaybackError(task.getId(), LogErrorType.PLAYER_ERROR, 
                     "播放器错误: what=" + what + ", extra=" + extra);
+            consecutiveErrors++;
             currentIndex++;
             playCurrentTrack();
             return true;
@@ -921,7 +1182,7 @@ public class AudioPlaybackService extends Service {
      * 记录播放错误到日志（仅记录，不更新状态为失败）
      */
     private void recordPlaybackError(long taskId, int errorType, String errorMessage) {
-        Log.w(TAG, "Playback error for task " + taskId + ": " + errorMessage);
+        AppLogger.getInstance().w(TAG, "Playback error for task " + taskId + ": " + errorMessage);
         // 这里只记录日志，不更新状态，因为可能还有其他文件可以播放
     }
 
@@ -935,6 +1196,76 @@ public class AudioPlaybackService extends Service {
             return path.substring(lastSlash + 1);
         }
         return path;
+    }
+    
+    // ==================== 播放状态持久化 ====================
+    
+    /**
+     * 保存任务的播放状态（用于崩溃恢复）
+     */
+    private void saveTaskPlaybackState(long taskId, int currentIndex, int currentPosition, List<String> playlist) {
+        SharedPreferences.Editor editor = playbackPrefs.edit();
+        editor.putInt(String.format(KEY_TASK_CURRENT_INDEX, taskId), currentIndex);
+        editor.putInt(String.format(KEY_TASK_CURRENT_POSITION, taskId), currentPosition);
+        // 保存播放列表（用逗号分隔）
+        editor.putString(String.format(KEY_TASK_PLAYLIST, taskId), String.join("|||", playlist));
+        // 更新正在播放的任务ID列表
+        Set<String> taskIds = new HashSet<>(playbackPrefs.getStringSet(KEY_PLAYING_TASK_IDS, new HashSet<>()));
+        taskIds.add(String.valueOf(taskId));
+        editor.putStringSet(KEY_PLAYING_TASK_IDS, taskIds);
+        editor.apply();
+        AppLogger.getInstance().d(TAG, "Saved playback state for task " + taskId + ": index=" + currentIndex + ", position=" + currentPosition);
+    }
+    
+    /**
+     * 获取保存的播放状态
+     */
+    private int[] getSavedPlaybackState(long taskId) {
+        int currentIndex = playbackPrefs.getInt(String.format(KEY_TASK_CURRENT_INDEX, taskId), 0);
+        int currentPosition = playbackPrefs.getInt(String.format(KEY_TASK_CURRENT_POSITION, taskId), 0);
+        return new int[]{currentIndex, currentPosition};
+    }
+    
+    /**
+     * 获取保存的播放列表
+     */
+    private List<String> getSavedPlaylist(long taskId) {
+        String playlistStr = playbackPrefs.getString(String.format(KEY_TASK_PLAYLIST, taskId), "");
+        if (playlistStr.isEmpty()) {
+            return new ArrayList<>();
+        }
+        String[] parts = playlistStr.split("\\|\\|\\|");
+        List<String> playlist = new ArrayList<>();
+        for (String part : parts) {
+            if (!part.isEmpty()) {
+                playlist.add(part);
+            }
+        }
+        return playlist;
+    }
+    
+    /**
+     * 清除任务的播放状态
+     */
+    private void clearTaskPlaybackState(long taskId) {
+        SharedPreferences.Editor editor = playbackPrefs.edit();
+        editor.remove(String.format(KEY_TASK_CURRENT_INDEX, taskId));
+        editor.remove(String.format(KEY_TASK_CURRENT_POSITION, taskId));
+        editor.remove(String.format(KEY_TASK_PLAYLIST, taskId));
+        // 从正在播放的任务ID列表中移除
+        Set<String> taskIds = new HashSet<>(playbackPrefs.getStringSet(KEY_PLAYING_TASK_IDS, new HashSet<>()));
+        taskIds.remove(String.valueOf(taskId));
+        editor.putStringSet(KEY_PLAYING_TASK_IDS, taskIds);
+        editor.apply();
+        AppLogger.getInstance().d(TAG, "Cleared playback state for task " + taskId);
+    }
+    
+    /**
+     * 检查是否有保存的播放状态（用于判断是否是崩溃恢复）
+     */
+    private boolean hasSavedPlaybackState(long taskId) {
+        Set<String> taskIds = playbackPrefs.getStringSet(KEY_PLAYING_TASK_IDS, new HashSet<>());
+        return taskIds.contains(String.valueOf(taskId));
     }
 
     /**
@@ -1007,14 +1338,8 @@ public class AudioPlaybackService extends Service {
     public Map<Long, PlaybackState> getAllPlaybackStates() {
         Map<Long, PlaybackState> states = new HashMap<>();
         
-        Log.d(TAG, "getAllPlaybackStates: taskPlayers.size=" + taskPlayers.size());
-        
         for (Map.Entry<Long, TaskPlayer> entry : taskPlayers.entrySet()) {
             TaskPlayer player = entry.getValue();
-            Log.d(TAG, "getAllPlaybackStates: taskId=" + entry.getKey() + 
-                    ", player=" + (player != null) + 
-                    ", isPlaying=" + (player != null ? player.isPlaying : "null"));
-            
             if (player != null && player.isPlaying) {
                 boolean actuallyPlaying = player.isActuallyPlaying() || (!player.isPaused && player.isPlaying);
                 PlaybackState state = new PlaybackState(
@@ -1030,7 +1355,6 @@ public class AudioPlaybackService extends Service {
             }
         }
         
-        Log.d(TAG, "getAllPlaybackStates: returning " + states.size() + " states");
         return states;
     }
     
@@ -1087,6 +1411,22 @@ public class AudioPlaybackService extends Service {
             // 同时通知所有播放状态
             playbackCallback.onAllPlaybackStatesChanged(getAllPlaybackStates());
         }
+    }
+
+    /**
+     * 静态方法：检查 Service 是否正在运行
+     * 用于判断是否需要在 handleReboot 时恢复播放
+     */
+    public static boolean isRunning() {
+        return isServiceRunning;
+    }
+    
+    /**
+     * 静态方法：检查特定任务是否正在播放
+     * 用于判断是否需要恢复特定任务的播放
+     */
+    public static boolean isTaskCurrentlyPlaying(long taskId) {
+        return playingTaskIds.contains(taskId);
     }
 
     /**

@@ -10,7 +10,9 @@ import androidx.work.WorkManager;
 
 import com.caleb.scheduledplayer.data.database.AppDatabase;
 import com.caleb.scheduledplayer.data.repository.TaskLogRepository;
+import com.caleb.scheduledplayer.service.scheduler.TaskScheduleManager;
 import com.caleb.scheduledplayer.service.worker.TaskCheckWorker;
+import com.caleb.scheduledplayer.util.AppLogger;
 import com.caleb.scheduledplayer.util.HuaweiDeviceHelper;
 
 /**
@@ -30,6 +32,9 @@ public class ScheduledPlayerApp extends Application implements Configuration.Pro
         super.onCreate();
         instance = this;
         
+        // 初始化日志系统（最先初始化）
+        AppLogger.getInstance().init(this);
+        
         // 初始化数据库
         initDatabase();
         
@@ -38,6 +43,10 @@ public class ScheduledPlayerApp extends Application implements Configuration.Pro
         
         // 启动定期任务检查（华为设备备份方案）
         initTaskCheckWorker();
+        
+        // 重新调度所有任务（确保应用启动后任务正常）
+        // 注意：这里只在应用进程启动时执行一次，不会因为 Activity 重建而重复执行
+        rescheduleAllTasks();
         
         // 清理过期日志
         cleanOldLogs();
@@ -103,6 +112,21 @@ public class ScheduledPlayerApp extends Application implements Configuration.Pro
         if (HuaweiDeviceHelper.isHuaweiDevice()) {
             TaskCheckWorker.schedulePeriodicCheck(this);
         }
+    }
+
+    /**
+     * 重新调度所有启用的任务
+     * 应用启动时执行一次，确保闹钟正确设置
+     */
+    private void rescheduleAllTasks() {
+        new Thread(() -> {
+            try {
+                android.util.Log.d("ScheduledPlayerApp", "Rescheduling all tasks on app start");
+                TaskScheduleManager.getInstance(this).rescheduleAllTasks();
+            } catch (Exception e) {
+                android.util.Log.e("ScheduledPlayerApp", "Error rescheduling tasks", e);
+            }
+        }).start();
     }
 
     /**

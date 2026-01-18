@@ -45,10 +45,28 @@
                     android:textColor="@color/on_surface"
                     android:textSize="@dimen/text_size_lg"
                     android:textStyle="bold"
-                    app:layout_constraintEnd_toStartOf="@id/switchEnabled"
+                    app:layout_constraintEnd_toStartOf="@id/textExecutionState"
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
                     tools:text="早起闹钟" />
+
+                <!-- 执行状态标签 -->
+                <TextView
+                    android:id="@+id/textExecutionState"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/spacing_sm"
+                    android:layout_marginEnd="@dimen/spacing_sm"
+                    android:paddingHorizontal="@dimen/spacing_sm"
+                    android:paddingVertical="2dp"
+                    android:textColor="@android:color/white"
+                    android:textSize="@dimen/text_size_xs"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@id/textTaskName"
+                    app:layout_constraintEnd_toStartOf="@id/switchEnabled"
+                    app:layout_constraintTop_toTopOf="@id/textTaskName"
+                    tools:text="已跳过"
+                    tools:visibility="visible" />
 
                 <!-- 播放时间 -->
                 <TextView

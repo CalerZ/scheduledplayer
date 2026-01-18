@@ -18,7 +18,7 @@ import com.caleb.scheduledplayer.data.entity.TaskLogEntity;
  */
 @Database(
         entities = {TaskEntity.class, TaskLogEntity.class},
-        version = 7,
+        version = 8,
         exportSchema = false
 )
 public abstract class AppDatabase extends RoomDatabase {
@@ -174,6 +174,21 @@ public abstract class AppDatabase extends RoomDatabase {
     };
 
     /**
+     * 数据库迁移：版本 7 -> 8（添加执行状态相关列）
+     */
+    static final Migration MIGRATION_7_8 = new Migration(7, 8) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            // 添加执行状态字段
+            database.execSQL("ALTER TABLE `tasks` ADD COLUMN `execution_state` INTEGER NOT NULL DEFAULT 0");
+            // 添加当前执行周期开始时间
+            database.execSQL("ALTER TABLE `tasks` ADD COLUMN `current_execution_start` INTEGER NOT NULL DEFAULT 0");
+            // 添加当前执行周期结束时间
+            database.execSQL("ALTER TABLE `tasks` ADD COLUMN `current_execution_end` INTEGER NOT NULL DEFAULT 0");
+        }
+    };
+
+    /**
      * 获取数据库单例
      */
     public static AppDatabase getInstance(Context context) {
@@ -185,7 +200,7 @@ public abstract class AppDatabase extends RoomDatabase {
                             AppDatabase.class,
                             DATABASE_NAME
                     )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     .fallbackToDestructiveMigration()
                     .build();
                 }

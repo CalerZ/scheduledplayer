@@ -29,7 +29,7 @@ import com.caleb.scheduledplayer.presentation.ui.widget.PlaylistPickerDialog;
 import com.caleb.scheduledplayer.presentation.ui.widget.RepeatDaysBottomSheet;
 import com.caleb.scheduledplayer.presentation.ui.widget.WheelTimePickerDialog;
 import com.caleb.scheduledplayer.presentation.viewmodel.TaskEditViewModel;
-import com.caleb.scheduledplayer.service.scheduler.TaskSchedulerService;
+import com.caleb.scheduledplayer.service.scheduler.TaskScheduleManager;
 import com.caleb.scheduledplayer.presentation.adapter.AudioFileAdapter;
 import com.caleb.scheduledplayer.util.AudioFileValidator;
 import com.caleb.scheduledplayer.util.BluetoothHelper;
@@ -190,9 +190,8 @@ public class TaskEditActivity extends AppCompatActivity {
             taskId = savedId;
             task.setId(savedId);
             
-            // 调度任务
-            TaskSchedulerService scheduler = new TaskSchedulerService(this);
-            scheduler.scheduleTask(task);
+            // 使用新的 TaskScheduleManager 调度任务（会自动重置执行状态）
+            TaskScheduleManager.getInstance(this).scheduleTask(task);
             
             Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show();
             finish();
@@ -217,7 +216,7 @@ public class TaskEditActivity extends AppCompatActivity {
         task.setPlayMode(currentPlayMode);
         task.setRepeatDays(currentRepeatDays);
         task.setEnabled(originalEnabled);
-        task.setVolume(originalVolume);
+        task.setVolume((int) binding.sliderVolume.getValue());
         task.setAudioPaths(Converters.toAudioPathsJson(audioPaths));
         task.setOutputDevice(currentOutputDevice);
         task.setAllDayPlay(allDayPlay);
@@ -283,6 +282,12 @@ public class TaskEditActivity extends AppCompatActivity {
         
         // 重复日期点击选择
         binding.layoutRepeatDays.setOnClickListener(v -> showRepeatDaysPicker());
+        
+        // 音量滑块监听
+        binding.sliderVolume.addOnChangeListener((slider, value, fromUser) -> {
+            int volume = (int) value;
+            binding.textVolumeValue.setText(volume + "%");
+        });
     }
     
     private void togglePlayMode() {
@@ -626,6 +631,10 @@ public class TaskEditActivity extends AppCompatActivity {
         binding.switchAllDayPlay.setChecked(task.isAllDayPlay());
         // 根据全天播放状态显示/隐藏时间范围
         binding.layoutTimeRange.setVisibility(task.isAllDayPlay() ? View.GONE : View.VISIBLE);
+        
+        // 音量
+        binding.sliderVolume.setValue(task.getVolume());
+        binding.textVolumeValue.setText(task.getVolume() + "%");
     }
 
     @Override

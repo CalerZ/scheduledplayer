@@ -13,6 +13,7 @@ import com.caleb.scheduledplayer.R;
 import com.caleb.scheduledplayer.data.entity.TaskEntity;
 import com.caleb.scheduledplayer.databinding.ItemTaskBinding;
 import com.caleb.scheduledplayer.service.player.AudioPlaybackService;
+import com.caleb.scheduledplayer.service.scheduler.TaskExecutionState;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -204,8 +205,39 @@ public class TaskAdapter extends ListAdapter<TaskEntity, TaskAdapter.TaskViewHol
                 }
             });
             
+            // 更新执行状态标签
+            updateExecutionStateLabel(task);
+            
             // 更新播放状态
             updatePlaybackState(task);
+        }
+        
+        void updateExecutionStateLabel(TaskEntity task) {
+            TaskExecutionState state = task.getExecutionStateEnum();
+            
+            switch (state) {
+                case SKIPPED:
+                    binding.textExecutionState.setVisibility(View.VISIBLE);
+                    binding.textExecutionState.setText("已跳过");
+                    binding.textExecutionState.setBackgroundColor(
+                            itemView.getContext().getColor(R.color.warning));
+                    break;
+                case WAITING_SLOT:
+                    binding.textExecutionState.setVisibility(View.VISIBLE);
+                    binding.textExecutionState.setText("等待中");
+                    binding.textExecutionState.setBackgroundColor(
+                            itemView.getContext().getColor(R.color.info));
+                    break;
+                case EXECUTING:
+                    binding.textExecutionState.setVisibility(View.VISIBLE);
+                    binding.textExecutionState.setText("播放中");
+                    binding.textExecutionState.setBackgroundColor(
+                            itemView.getContext().getColor(R.color.success));
+                    break;
+                default:
+                    binding.textExecutionState.setVisibility(View.GONE);
+                    break;
+            }
         }
         
         void updatePlaybackState(TaskEntity task) {

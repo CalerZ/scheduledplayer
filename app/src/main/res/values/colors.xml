@@ -29,6 +29,7 @@
     <color name="on_error">#FFFFFF</color>
     <color name="success">#388E3C</color>
     <color name="warning">#FFA000</color>
+    <color name="info">#1976D2</color>
     
     <!-- Task Status Colors -->
     <color name="task_enabled">#4CAF50</color>

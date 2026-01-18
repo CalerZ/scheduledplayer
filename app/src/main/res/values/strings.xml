@@ -95,4 +95,17 @@
     <string name="settings_status_no_bluetooth">未连接蓝牙</string>
     <string name="settings_bluetooth_connected">已连接: %s</string>
     <string name="settings_bluetooth_not_connected">未连接</string>
+    
+    <!-- 应用日志查看 -->
+    <string name="log_viewer_title">日志</string>
+    <string name="log_storage_size">存储占用：</string>
+    <string name="log_search_hint">搜索日志...</string>
+    <string name="log_empty">暂无日志</string>
+    <string name="log_share">分享日志</string>
+    <string name="log_clear">清空日志</string>
+    <string name="log_clear_confirm_title">清空日志</string>
+    <string name="log_clear_confirm_message">确定要清空所有日志吗？此操作不可撤销。</string>
+    <string name="log_cleared">日志已清空</string>
+    <string name="log_share_title">分享应用日志</string>
+    <string name="log_share_failed">分享失败</string>
 </resources>

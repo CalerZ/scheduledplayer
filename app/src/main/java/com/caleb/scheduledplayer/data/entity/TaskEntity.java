@@ -3,7 +3,10 @@ package com.caleb.scheduledplayer.data.entity;
 import androidx.annotation.NonNull;
 import androidx.room.ColumnInfo;
 import androidx.room.Entity;
+import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
+
+import com.caleb.scheduledplayer.service.scheduler.TaskExecutionState;
 
 /**
  * 任务实体类
@@ -89,6 +92,26 @@ public class TaskEntity {
      */
     @ColumnInfo(name = "all_day_play", defaultValue = "0")
     private boolean allDayPlay;
+
+    /**
+     * 执行状态
+     * @see TaskExecutionState
+     */
+    @ColumnInfo(name = "execution_state", defaultValue = "0")
+    private int executionState = TaskExecutionState.IDLE.getValue();
+
+    /**
+     * 当前执行周期的开始时间戳
+     * 用于判断一次性跨天任务是否已开始执行
+     */
+    @ColumnInfo(name = "current_execution_start", defaultValue = "0")
+    private long currentExecutionStart = 0;
+
+    /**
+     * 当前执行周期的预期结束时间戳
+     */
+    @ColumnInfo(name = "current_execution_end", defaultValue = "0")
+    private long currentExecutionEnd = 0;
 
     // 播放模式常量
     public static final int PLAY_MODE_SEQUENCE = 0;
@@ -222,5 +245,70 @@ public class TaskEntity {
      */
     public boolean shouldRunOnDay(int dayFlag) {
         return (repeatDays & dayFlag) != 0;
+    }
+
+    // 执行状态相关的 Getter/Setter
+
+    public int getExecutionState() {
+        return executionState;
+    }
+
+    public void setExecutionState(int executionState) {
+        this.executionState = executionState;
+    }
+
+    /**
+     * 获取执行状态枚举
+     */
+    @Ignore
+    public TaskExecutionState getExecutionStateEnum() {
+        return TaskExecutionState.fromValue(executionState);
+    }
+
+    /**
+     * 设置执行状态（使用枚举）
+     */
+    @Ignore
+    public void setExecutionStateEnum(TaskExecutionState state) {
+        this.executionState = state.getValue();
+    }
+
+    public long getCurrentExecutionStart() {
+        return currentExecutionStart;
+    }
+
+    public void setCurrentExecutionStart(long currentExecutionStart) {
+        this.currentExecutionStart = currentExecutionStart;
+    }
+
+    public long getCurrentExecutionEnd() {
+        return currentExecutionEnd;
+    }
+
+    public void setCurrentExecutionEnd(long currentExecutionEnd) {
+        this.currentExecutionEnd = currentExecutionEnd;
+    }
+
+    /**
+     * 重置执行状态（用于任务编辑或重新启用时）
+     */
+    public void resetExecutionState() {
+        this.executionState = TaskExecutionState.IDLE.getValue();
+        this.currentExecutionStart = 0;
+        this.currentExecutionEnd = 0;
+    }
+
+    /**
+     * 检查任务是否为一次性任务
+     */
+    public boolean isOneTime() {
+        return repeatDays == 0;
+    }
+
+    /**
+     * 检查任务是否为每天重复任务
+     */
+    public boolean isEveryday() {
+        return repeatDays == EVERYDAY;
     }
 }
